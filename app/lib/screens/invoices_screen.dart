@@ -5,12 +5,14 @@ import 'package:go_router/go_router.dart';
 
 import '../core/api.dart';
 import '../core/companies.dart';
+import '../core/docs.dart';
 import '../core/format.dart';
 import '../widgets/common.dart';
 import '../widgets/company_selector.dart';
 
 class InvoicesScreen extends StatefulWidget {
-  const InvoicesScreen({super.key});
+  const InvoicesScreen({super.key, this.docType = DocType.invoice});
+  final DocType docType;
   @override
   State<InvoicesScreen> createState() => _InvoicesScreenState();
 }
@@ -18,6 +20,9 @@ class InvoicesScreen extends StatefulWidget {
 class _InvoicesScreenState extends State<InvoicesScreen> {
   final List<Map> _items = [];
   int _page = 1, _pages = 1, _total = 0;
+  double _sumTotal = 0, _sumBalance = 0;
+  DocType get _type => widget.docType;
+  String get _newPath => '/invoices/new${_type.isInvoice ? '' : '?type=${_type.key}'}';
   bool _loading = false;
   String? _error;
   String _status = 'all';
@@ -52,6 +57,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
       await Companies.instance.ensure();
       final r = await Api.instance.get('/invoices', {
         'company': Companies.instance.selected,
+        'type': _type.key,
         'status': _status,
         'q': _q,
         'from': _from,
@@ -64,6 +70,8 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
         _items.addAll(List<Map>.from(r['items']));
         _pages = r['pages'];
         _total = r['total'];
+        _sumTotal = toD(r['sumTotal']);
+        _sumBalance = toD(r['sumBalance']);
       });
     } catch (e) {
       if (mounted) setState(() => _error = '$e');
@@ -71,6 +79,12 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
       if (mounted) setState(() => _loading = false);
     }
   }
+
+  List<(String, String)> get _statuses => switch (_type) {
+        DocType.invoice => const [('all', 'All'), ('due', 'Unpaid'), ('paid', 'Paid'), ('cancelled', 'Cancelled')],
+        DocType.creditNote => const [('all', 'All'), ('issued', 'Issued'), ('cancelled', 'Cancelled')],
+        _ => const [('all', 'All'), ('open', 'Open'), ('converted', 'Converted'), ('cancelled', 'Cancelled')],
+      };
 
   Future<void> _open(String path) async {
     await context.push(path);
@@ -80,11 +94,11 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Invoices${_total > 0 ? ' ($_total)' : ''}')),
+      appBar: AppBar(title: Text('${_type.plural}${_total > 0 ? ' ($_total)' : ''}')),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _open('/invoices/new'),
+        onPressed: () => _open(_newPath),
         icon: const Icon(Icons.add),
-        label: const Text('New Invoice'),
+        label: Text('New ${_type.label}'),
       ),
       body: Constrained(
         maxWidth: 1000,
@@ -108,7 +122,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Row(children: [
-                  for (final s in const [('all', 'All'), ('due', 'Unpaid'), ('paid', 'Paid'), ('cancelled', 'Cancelled')])
+                  for (final s in _statuses)
                     Padding(
                       padding: const EdgeInsets.only(right: 8),
                       child: ChoiceChip(
@@ -151,6 +165,19 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
               ),
             ]),
           ),
+          if (_total > 0)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+              child: Row(children: [
+                Text('Total: ', style: TextStyle(color: Colors.grey.shade700)),
+                Text(rupee(_sumTotal), style: const TextStyle(fontWeight: FontWeight.w700)),
+                if (_type.isInvoice) ...[
+                  const SizedBox(width: 16),
+                  Text('Pending: ', style: TextStyle(color: Colors.grey.shade700)),
+                  Text(rupee(_sumBalance), style: TextStyle(fontWeight: FontWeight.w700, color: Colors.red.shade700)),
+                ],
+              ]),
+            ),
           Expanded(child: _list()),
         ]),
       ),
@@ -163,8 +190,8 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
     if (_items.isEmpty) {
       return EmptyView(
         icon: Icons.receipt_long,
-        text: 'No invoices found',
-        action: FilledButton.icon(onPressed: () => _open('/invoices/new'), icon: const Icon(Icons.add), label: const Text('Create invoice')),
+        text: 'No ${_type.plural.toLowerCase()} found',
+        action: FilledButton.icon(onPressed: () => _open(_newPath), icon: const Icon(Icons.add), label: Text('Create ${_type.label.toLowerCase()}')),
       );
     }
     return RefreshIndicator(

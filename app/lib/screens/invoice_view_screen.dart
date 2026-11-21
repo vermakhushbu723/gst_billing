@@ -6,10 +6,12 @@ import 'package:printing/printing.dart';
 
 import '../core/api.dart';
 import '../core/auth.dart';
+import '../core/docs.dart';
 import '../core/format.dart';
 import '../core/invoice_actions.dart';
 import '../widgets/common.dart';
-import 'invoice_form_screen.dart' show paymentModes;
+import '../core/gst.dart' show paymentModes;
+import '../core/brand.dart';
 
 class InvoiceViewScreen extends StatefulWidget {
   const InvoiceViewScreen({super.key, required this.id});
@@ -24,6 +26,7 @@ class _InvoiceViewScreenState extends State<InvoiceViewScreen> {
   String? _error;
   String _copy = 'ORIGINAL';
   int _pdfVersion = 0;
+  DocType get _type => DocType.of(_inv?['docType']);
 
   @override
   void initState() {
@@ -182,6 +185,13 @@ class _InvoiceViewScreenState extends State<InvoiceViewScreen> {
     _apply(await runBusy(context, () => Api.instance.delete('/invoices/${widget.id}/payments/${p['_id']}')));
   }
 
+  Future<void> _convert() async {
+    if (!await confirm(context, 'Convert to invoice?', "A new tax invoice will be created with these items and today's date.", ok: 'Convert')) return;
+    if (!mounted) return;
+    final r = await runBusy(context, () => Api.instance.post('/invoices/${widget.id}/convert'), success: 'Invoice created');
+    if (r != null && mounted) context.pushReplacement('/invoices/${r['_id']}');
+  }
+
   Future<void> _menu(String v) async {
     final inv = _inv!;
     switch (v) {
@@ -191,20 +201,20 @@ class _InvoiceViewScreenState extends State<InvoiceViewScreen> {
       case 'duplicate':
         await context.push('/invoices/new?from=${widget.id}');
       case 'cancel':
-        if (await confirm(context, 'Cancel invoice?', 'Invoice ${invNo(inv)} will be marked CANCELLED and left out of reports.', ok: 'Cancel invoice', danger: true) &&
+        if (await confirm(context, 'Cancel ${_type.label}?', '${_type.label} ${invNo(inv)} will be marked CANCELLED and left out of reports.', ok: 'Cancel ${_type.label}', danger: true) &&
             mounted) {
           _apply(await runBusy(context, () => Api.instance.post('/invoices/${widget.id}/cancel'), success: 'Invoice cancelled'));
         }
       case 'restore':
         _apply(await runBusy(context, () => Api.instance.post('/invoices/${widget.id}/restore'), success: 'Invoice restored'));
       case 'delete':
-        if (await confirm(context, 'Delete invoice?', 'Invoice ${invNo(inv)} will be deleted permanently.', ok: 'Delete', danger: true) && mounted) {
+        if (await confirm(context, 'Delete ${_type.label}?', '${_type.label} ${invNo(inv)} will be deleted permanently.', ok: 'Delete', danger: true) && mounted) {
           final r = await runBusy(context, () => Api.instance.delete('/invoices/${widget.id}'), success: 'Invoice deleted');
           if (r != null && mounted) context.pop(true);
         }
       case 'copytext':
         await Clipboard.setData(ClipboardData(text: InvoiceActions.message(inv)));
-        if (mounted) showSnack(context, 'Invoice summary copied');
+        if (mounted) showSnack(context, 'Summary copied');
     }
   }
 
@@ -213,19 +223,19 @@ class _InvoiceViewScreenState extends State<InvoiceViewScreen> {
     final inv = _inv;
     return Scaffold(
       appBar: AppBar(
-        title: Text(inv == null ? 'Invoice' : 'Invoice #${invNo(inv)}'),
+        title: Text(inv == null ? 'Document' : '${_type.label} #${invNo(inv)}'),
         actions: [
           if (inv != null)
             PopupMenuButton<String>(
               onSelected: _menu,
               itemBuilder: (_) => [
-                if (inv['status'] != 'cancelled') const PopupMenuItem(value: 'edit', child: ListTile(leading: Icon(Icons.edit), title: Text('Edit'))),
+                if (!['cancelled', 'converted'].contains(inv['status'])) const PopupMenuItem(value: 'edit', child: ListTile(leading: Icon(Icons.edit), title: Text('Edit'))),
                 const PopupMenuItem(value: 'duplicate', child: ListTile(leading: Icon(Icons.copy), title: Text('Duplicate as new'))),
                 const PopupMenuItem(value: 'copytext', child: ListTile(leading: Icon(Icons.text_snippet_outlined), title: Text('Copy summary text'))),
                 if (inv['status'] != 'cancelled')
-                  const PopupMenuItem(value: 'cancel', child: ListTile(leading: Icon(Icons.block), title: Text('Cancel invoice')))
+                  const PopupMenuItem(value: 'cancel', child: ListTile(leading: Icon(Icons.block), title: Text('Cancel')))
                 else
-                  const PopupMenuItem(value: 'restore', child: ListTile(leading: Icon(Icons.restore), title: Text('Restore invoice'))),
+                  const PopupMenuItem(value: 'restore', child: ListTile(leading: Icon(Icons.restore), title: Text('Restore'))),
                 if (AuthState.instance.isAdmin)
                   const PopupMenuItem(value: 'delete', child: ListTile(leading: Icon(Icons.delete_outline, color: Colors.red), title: Text('Delete'))),
               ],
@@ -275,7 +285,7 @@ class _InvoiceViewScreenState extends State<InvoiceViewScreen> {
         canDebug: false,
         maxPageWidth: 760,
         pdfFileName: invoiceFileName(_inv!),
-        scrollViewDecoration: const BoxDecoration(color: Color(0xFFE9ECF2)),
+        scrollViewDecoration: const BoxDecoration(color: Brand.tealLight),
       );
 
   Widget _actionBar() {
@@ -288,13 +298,13 @@ class _InvoiceViewScreenState extends State<InvoiceViewScreen> {
             label: Text(label),
           ),
         );
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(children: [
+    return Wrap(runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
         btn(Icons.print, 'Print', () => InvoiceActions.printPdf(_inv!, _pdf!)),
         btn(Icons.chat, 'WhatsApp', _whatsapp, color: const Color(0xFF25D366)),
         btn(kIsWeb ? Icons.download : Icons.share, kIsWeb ? 'Download' : 'Share PDF', () => InvoiceActions.download(_inv!, _pdf!)),
-        if (_inv!['status'] != 'cancelled' && toD(_inv!['balance']) > 0) btn(Icons.payments_outlined, 'Payment', _addPayment),
+        if (_type.isInvoice && _inv!['status'] != 'cancelled' && toD(_inv!['balance']) > 0) btn(Icons.payments_outlined, 'Payment', _addPayment),
+        if (_type.canConvert && _inv!['status'] == 'open') btn(Icons.transform, 'Convert to Invoice', _convert, color: Brand.gold),
+        if (_inv!['convertedTo'] != null) btn(Icons.receipt_long, 'Open Invoice', () => context.push('/invoices/${_inv!['convertedTo']}')),
         DropdownButton<String>(
           value: _copy,
           underline: const SizedBox(),
@@ -308,8 +318,7 @@ class _InvoiceViewScreenState extends State<InvoiceViewScreen> {
             _rebuildPdf();
           },
         ),
-      ]),
-    );
+      ]);
   }
 
   List<Widget> _details({bool withActions = true}) {
@@ -329,8 +338,9 @@ class _InvoiceViewScreenState extends State<InvoiceViewScreen> {
         trailing: StatusChip(inv['status']),
         child: Column(children: [
           row('Company', '${inv['companySnapshot']?['name'] ?? ''}'),
-          row('Invoice date', dmy(inv['invoiceDate'])),
-          if ('${inv['dueDate'] ?? ''}'.isNotEmpty) row('Due date', dmy(inv['dueDate'])),
+          row('Date', dmy(inv['invoiceDate'])),
+          if (_type.secondDateLabel != null && '${inv['dueDate'] ?? ''}'.isNotEmpty) row(_type.secondDateLabel!.replaceAll(':', ''), dmy(inv['dueDate'])),
+          if ('${inv['refInvoiceNo'] ?? ''}'.isNotEmpty) row('Against invoice', '${inv['refInvoiceNo']}'),
           row('Place of supply', '${inv['placeOfSupply'] ?? ''}'),
           const Divider(),
           row('Taxable amount', rupee(inv['taxableAmount'])),
@@ -339,11 +349,13 @@ class _InvoiceViewScreenState extends State<InvoiceViewScreen> {
             row('SGST', rupee(inv['sgst'])),
           ],
           row('Total', rupee(inv['total']), strong: true),
-          row('Received', rupee(inv['receivedAmount']), color: Colors.green.shade700),
-          row('Balance', rupee(inv['balance']), strong: true, color: toD(inv['balance']) > 0 ? Colors.red.shade700 : null),
+          if (_type.isInvoice) ...[
+            row('Received', rupee(inv['receivedAmount']), color: Colors.green.shade700),
+            row('Balance', rupee(inv['balance']), strong: true, color: toD(inv['balance']) > 0 ? Colors.red.shade700 : null),
+          ],
         ]),
       ),
-      SectionCard(
+      if (_type.isInvoice) SectionCard(
         title: 'Payments',
         trailing: inv['status'] != 'cancelled' && toD(inv['balance']) > 0
             ? TextButton.icon(onPressed: _addPayment, icon: const Icon(Icons.add), label: const Text('Add'))

@@ -1,10 +1,14 @@
 // Same calculation as backend/src/utils/gst.js, used for the live totals
 // while an invoice is being typed. The server result is what gets saved.
 
+import 'masters.dart';
+
 double round2(num n) => ((n + 2.220446049250313e-16) * 100).round() / 100;
 
-const gstRates = <double>[0, 0.25, 3, 5, 12, 18, 28, 40];
-const units = ['KGS', 'NOS', 'PCS', 'BAGS', 'BOX', 'LTR', 'TON', 'MTR', 'DOZ', 'SET'];
+// Editable from Settings → Masters.
+List<double> get gstRates => Masters.instance.gstRates;
+List<String> get units => Masters.instance.units;
+List<String> get paymentModes => Masters.instance.paymentModes;
 
 class LineCalc {
   LineCalc(this.taxable, this.tax) : amount = round2(taxable + tax);

@@ -9,6 +9,7 @@ import '../pdf/invoice_pdf.dart';
 import '../widgets/common.dart';
 import 'api.dart';
 import 'companies.dart';
+import 'docs.dart';
 import 'format.dart';
 import 'save_file_io.dart' if (dart.library.js_interop) 'save_file_web.dart' as saver;
 
@@ -23,9 +24,9 @@ class InvoiceActions {
     final b = StringBuffer()
       ..writeln('Dear ${inv['billTo']?['name'] ?? 'Customer'},')
       ..writeln()
-      ..writeln('Please find the Tax Invoice No. ${invNo(inv)} dated ${dmy(inv['invoiceDate'])} '
+      ..writeln('Please find the ${DocType.of(inv['docType']).label} No. ${invNo(inv)} dated ${dmy(inv['invoiceDate'])} '
           'from ${inv['companySnapshot']?['name'] ?? ''}.')
-      ..writeln('Invoice Amount: ${rupee(inv['total'])}');
+      ..writeln('Amount: ${rupee(inv['total'])}');
     if (toD(inv['balance']) > 0 && toD(inv['balance']) != toD(inv['total'])) {
       b.writeln('Balance Due: ${rupee(inv['balance'])}');
     }
@@ -54,7 +55,7 @@ class InvoiceActions {
       files: [XFile.fromData(bytes, mimeType: 'application/pdf', name: name)],
       fileNameOverrides: [name],
       text: message(inv),
-      subject: 'Tax Invoice ${invNo(inv)}',
+      subject: '${DocType.of(inv['docType']).label} ${invNo(inv)}',
     ));
   }
 

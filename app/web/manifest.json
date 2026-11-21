@@ -1,11 +1,11 @@
 {
-    "name": "GST Billing",
-    "short_name": "GST Billing",
+    "name": "mybillwill",
+    "short_name": "mybillwill",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "GST Billing - invoices, print and WhatsApp share",
+    "background_color": "#FFFFFF",
+    "theme_color": "#0E6E70",
+    "description": "mybillwill - GST billing: invoices, print and WhatsApp share",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

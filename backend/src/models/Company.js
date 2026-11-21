@@ -28,6 +28,7 @@ const companySchema = new mongoose.Schema(
     bank: { type: bankSchema, default: () => ({}) },
     terms: { type: [String], default: [] },
     invoicePrefix: { type: String, default: '' },
+    docPrefixes: { type: Object, default: () => ({ quotation: 'QT-', credit_note: 'CN-', challan: 'DC-' }) },
     nextInvoiceNo: { type: Number, default: 1 },
     dueDays: { type: Number, default: 15 },
     color: { type: String, default: '#000000' },

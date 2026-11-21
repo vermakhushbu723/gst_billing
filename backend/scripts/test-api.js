@@ -3,14 +3,17 @@ import assert from 'node:assert/strict';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import mongoose from 'mongoose';
 
-const mongo = await MongoMemoryServer.create();
+const mongo = await MongoMemoryServer.create({ instance: { launchTimeout: 120000 } });
 const { config } = await import('../src/config.js');
 config.mongoUri = mongo.getUri('gst_test');
 config.uploadDir = 'uploads-test';
 const { createApp } = await import('../src/app.js');
 const { seed } = await import('../src/seed.js');
+const { migrate } = await import('../src/migrate.js');
 await mongoose.connect(config.mongoUri);
 await seed();
+await migrate();
+const round = (n) => Math.round(n * 100) / 100;
 
 const server = createApp().listen(0);
 const base = `http://127.0.0.1:${server.address().port}/api`;
@@ -100,10 +103,71 @@ try {
   assert.equal(edit.data.total, 3150);
   assert.equal(edit.data.invoiceNo, 290);
 
+  // ---- Quotation -> invoice ----
+  const qt = await api('POST', '/invoices', { docType: 'quotation', company: om._id, customer: customer._id, invoiceDate: '2026-10-10', items: [{ name: 'Ice', qty: 10, rate: 100, gstRate: 5 }] });
+  assert.equal(qt.status, 201, JSON.stringify(qt.data));
+  assert.equal(qt.data.invoiceNo, 1);
+  assert.equal(qt.data.invoicePrefix, 'QT-');
+  assert.equal(qt.data.status, 'open');
+  assert.equal(qt.data.balance, 0);
+  const qtPay = await api('POST', `/invoices/${qt.data._id}/payments`, { amount: 10 });
+  assert.equal(qtPay.status, 400);
+  const conv = await api('POST', `/invoices/${qt.data._id}/convert`, { invoiceDate: '2026-10-12' });
+  assert.equal(conv.status, 201, JSON.stringify(conv.data));
+  assert.equal(conv.data.docType, 'invoice');
+  assert.equal(conv.data.invoiceNo, 292);
+  assert.equal(conv.data.total, 1050);
+  assert.equal((await api('GET', `/invoices/${qt.data._id}`)).data.status, 'converted');
+  assert.equal((await api('POST', `/invoices/${qt.data._id}/convert`)).status, 400);
+  const qList = await api('GET', '/invoices?type=quotation');
+  assert.equal(qList.data.total, 1);
+
+  // ---- Credit note reduces customer balance ----
+  const cn = await api('POST', '/invoices', { docType: 'credit_note', company: om._id, customer: customer._id, invoiceDate: '2026-10-15', refInvoiceNo: '290', items: [{ name: 'ICE CUBES EDIBLE', qty: 100, rate: 3, gstRate: 5 }] });
+  assert.equal(cn.status, 201);
+  assert.equal(cn.data.invoicePrefix, 'CN-');
+  assert.equal(cn.data.status, 'issued');
+  let st2 = await api('GET', `/customers/${customer._id}/statement`);
+  assert.equal(st2.data.totals.balance, round(3150 + 1050 - 315));
+  assert.ok(st2.data.ledger.length >= 3);
+
+  // ---- Payment-in allocates to oldest invoices ----
+  const tooMuch = await api('POST', '/payments', { customer: customer._id, amount: 999999 });
+  assert.equal(tooMuch.status, 400);
+  const pin = await api('POST', '/payments', { customer: customer._id, amount: 3500, mode: 'UPI', date: '2026-10-20' });
+  assert.equal(pin.status, 201, JSON.stringify(pin.data));
+  assert.equal(pin.data.allocated.length, 2);
+  assert.equal(pin.data.allocated[0].amount, 3150); // invoice 290 (oldest) fully paid first
+  assert.equal(pin.data.allocated[1].amount, 350);
+  const plist = await api('GET', '/payments?from=2026-10-01&to=2026-10-31');
+  assert.ok(plist.data.total >= 3500);
+  assert.ok(plist.data.byMode.UPI >= 3500);
+
+  // ---- Expenses + settings + profit ----
+  const ex = await api('POST', '/expenses', { company: om._id, date: '2026-10-05', category: 'Electricity', amount: 1200, mode: 'Bank' });
+  assert.equal(ex.status, 201);
+  assert.equal((await api('POST', '/expenses', { company: om._id, date: '2026-10-05', category: '', amount: 5 })).status, 400);
+  const exl = await api('GET', '/expenses?from=2026-10-01&to=2026-10-31');
+  assert.equal(exl.data.total, 1200);
+  const settings = await api('GET', '/settings');
+  assert.ok(settings.data.units.includes('KGS'));
+  const upd = await api('PUT', '/settings', { units: ['KGS', 'BLOCK', 'KGS'], gstRates: [18, 5, 0] });
+  assert.deepEqual(upd.data.units, ['KGS', 'BLOCK']);
+  assert.deepEqual(upd.data.gstRates, [0, 5, 18]);
+  const rep = await api('GET', '/reports/sales?from=2026-10-01&to=2026-10-31');
+  assert.equal(rep.data.creditNotes.totals.count, 1);
+  assert.equal(rep.data.expenses.total, 1200);
+  assert.equal(rep.data.profit.netSales, round(rep.data.totals.taxable - 300));
+  assert.equal(rep.data.profit.profit, round(rep.data.profit.netSales - 1200));
+  assert.ok(rep.data.byItem.length >= 1 && rep.data.byCustomer.length >= 1);
+  const dash2 = await api('GET', '/reports/dashboard');
+  assert.equal(typeof dash2.data.monthExpense, 'number');
+
   const staff = await api('POST', '/users', { name: 'Staff', email: 'staff@x.com', password: 'staff123' });
   assert.equal(staff.status, 201);
   token = (await api('POST', '/auth/login', { email: 'staff@x.com', password: 'staff123' })).data.token;
   assert.equal((await api('POST', '/companies', { name: 'X' })).status, 403);
+  assert.equal((await api('PUT', '/settings', { units: ['X'] })).status, 403);
 
   console.log('All API tests passed');
 } finally {

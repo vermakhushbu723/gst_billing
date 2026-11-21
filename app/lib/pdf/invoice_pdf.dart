@@ -5,6 +5,7 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
+import '../core/docs.dart';
 import '../core/format.dart';
 
 /// Builds the tax invoice PDF in the same layout as the reference
@@ -49,6 +50,7 @@ class InvoicePdf {
     final signature = _image(company['signature']);
     final accent = PdfColor.fromHex(_hex(c['color'] ?? company['color']));
     final cancelled = inv['status'] == 'cancelled';
+    final type = DocType.of(inv['docType']);
 
     // fontNormal must be set too, otherwise copyWith(font:) is ignored by the pdf package.
     pw.TextStyle st(pw.Font? f, {double size = 9.5, PdfColor color = PdfColors.black}) =>
@@ -75,7 +77,7 @@ class InvoicePdf {
       mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
       children: [
         pw.Row(children: [
-          pw.Text('TAX INVOICE', style: medium.copyWith(fontSize: 10)),
+          pw.Text(type.pdfTitle, style: medium.copyWith(fontSize: 10)),
           pw.SizedBox(width: 8),
           pw.Container(
             padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 1),
@@ -118,11 +120,13 @@ class InvoicePdf {
       padding: const pw.EdgeInsets.symmetric(horizontal: 13, vertical: 9),
       child: pw.Column(children: [
         pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
-          rich('Invoice No.:', invNo(inv), style: base.copyWith(fontSize: 10)),
-          rich('Invoice Date:', dmy(inv['invoiceDate']), style: base.copyWith(fontSize: 10)),
-          '${inv['dueDate'] ?? ''}'.isNotEmpty
-              ? rich('Due Date:', dmy(inv['dueDate']), style: base.copyWith(fontSize: 10))
-              : pw.SizedBox(),
+          rich(type.noLabel, invNo(inv), style: base.copyWith(fontSize: 10)),
+          rich(type.dateLabel, dmy(inv['invoiceDate']), style: base.copyWith(fontSize: 10)),
+          type.secondDateLabel != null && '${inv['dueDate'] ?? ''}'.isNotEmpty
+              ? rich(type.secondDateLabel!, dmy(inv['dueDate']), style: base.copyWith(fontSize: 10))
+              : type == DocType.creditNote && '${inv['refInvoiceNo'] ?? ''}'.isNotEmpty
+                  ? rich('Against Invoice:', '${inv['refInvoiceNo']}', style: base.copyWith(fontSize: 10))
+                  : pw.SizedBox(),
         ]),
         if ('${inv['vehicleNo'] ?? ''}'.isNotEmpty || '${inv['poNumber'] ?? ''}'.isNotEmpty) ...[
           pw.SizedBox(height: 4),
@@ -305,8 +309,10 @@ class InvoicePdf {
           pw.Divider(color: PdfColors.black, thickness: 0.8, height: 8),
           totalRow('Total Amount', rupee(inv['total']), strong: true),
           pw.Divider(color: PdfColors.black, thickness: 0.8, height: 8),
-          totalRow('Received Amount', received == 0 ? '₹ 0' : rupee(received)),
-          if (received > 0) totalRow('Balance Amount', rupee(inv['balance'])),
+          if (type.isInvoice) ...[
+            totalRow('Received Amount', received == 0 ? '₹ 0' : rupee(received)),
+            if (received > 0) totalRow('Balance Amount', rupee(inv['balance'])),
+          ],
         ]),
       ),
       pw.SizedBox(height: 18),
@@ -338,9 +344,9 @@ class InvoicePdf {
     ]);
 
     final doc = pw.Document(
-      title: 'Tax Invoice ${invNo(inv)}',
+      title: '${type.label} ${invNo(inv)}',
       author: '${c['name'] ?? ''}',
-      creator: 'GST Billing',
+      creator: 'mybillwill',
       theme: pw.ThemeData.withFont(base: _regular, bold: _bold),
     );
     final emptyRows = items.length < 3 ? (3 - items.length) * 14.0 + 26 : 18.0;

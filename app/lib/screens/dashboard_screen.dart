@@ -7,6 +7,8 @@ import '../core/companies.dart';
 import '../core/format.dart';
 import '../widgets/common.dart';
 import '../widgets/company_selector.dart';
+import '../widgets/payment_dialog.dart';
+import '../core/brand.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -45,7 +47,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final name = '${AuthState.instance.user?['name'] ?? ''}';
     return Scaffold(
       appBar: AppBar(
-        title: Text('Hello, $name'),
+        title: Row(children: [
+          if (MediaQuery.sizeOf(context).width < 900) ...[const BrandLogo(height: 30), const SizedBox(width: 10)],
+          Flexible(child: Text('Hello, $name', overflow: TextOverflow.ellipsis)),
+        ]),
         actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh), tooltip: 'Refresh')],
       ),
       floatingActionButton: FloatingActionButton.extended(
@@ -69,10 +74,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final recent = List<Map>.from(d['recent'] ?? []);
     final topDue = List<Map>.from(d['topDue'] ?? []);
     final stats = [
-      StatCard(label: "Today's Sales", value: rupeeShort(d['today']['total']), sub: '${d['today']['count']} invoices', icon: Icons.today, color: Colors.blue),
-      StatCard(label: 'This Month', value: rupeeShort(d['month']['total']), sub: '${d['month']['count']} invoices', icon: Icons.calendar_month, color: Colors.indigo),
+      StatCard(label: "Today's Sales", value: rupeeShort(d['today']['total']), sub: '${d['today']['count']} invoices', icon: Icons.today, color: Brand.teal),
+      StatCard(label: 'This Month', value: rupeeShort(d['month']['total']), sub: '${d['month']['count']} invoices', icon: Icons.calendar_month, color: Brand.navy),
       StatCard(label: 'Outstanding', value: rupeeShort(d['outstanding']), sub: 'to be received', icon: Icons.account_balance_wallet, color: Colors.red),
-      StatCard(label: 'GST This Month', value: rupeeShort(d['month']['tax']), sub: 'CGST + SGST + IGST', icon: Icons.percent, color: Colors.teal),
+      StatCard(label: 'GST This Month', value: rupeeShort(d['month']['tax']), sub: 'CGST + SGST + IGST', icon: Icons.percent, color: Brand.gold),
+      StatCard(label: 'Received This Month', value: rupeeShort(d['receivedMonth']), sub: 'payments in', icon: Icons.south_west, color: Colors.green.shade700),
+      StatCard(label: 'Expenses This Month', value: rupeeShort(d['monthExpense']), sub: 'kharcha', icon: Icons.north_east, color: Colors.deepOrange),
+      StatCard(
+        label: 'Profit This Month',
+        value: rupeeShort(toD(d['month']['total']) - toD(d['month']['tax']) - toD(d['monthExpense'])),
+        sub: 'sales (without GST) − expenses',
+        icon: Icons.trending_up,
+        color: Brand.teal,
+      ),
+      StatCard(label: 'Open Quotations', value: '${d['openQuotations'] ?? 0}', sub: 'not yet converted', icon: Icons.request_quote_outlined, color: Brand.navy),
     ];
 
     return ListView(
@@ -95,15 +110,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
             const SizedBox(height: 16),
             Wrap(spacing: 10, runSpacing: 10, children: [
               _quick(Icons.receipt_long, 'New Invoice', () => _open('/invoices/new')),
+              _quick(Icons.request_quote_outlined, 'Quotation', () => _open('/invoices/new?type=quotation')),
+              _quick(Icons.local_shipping_outlined, 'Delivery Challan', () => _open('/invoices/new?type=challan')),
+              _quick(Icons.add_card, 'Receive Payment', () async {
+                if (await receivePayment(context)) _load();
+              }),
+              _quick(Icons.north_east, 'Add Expense', () => context.go('/expenses')),
               _quick(Icons.person_add_alt, 'Add Customer', () => _open('/customers/new')),
               _quick(Icons.add_box_outlined, 'Add Product', () => _open('/products/new')),
-              _quick(Icons.bar_chart, 'GST Report', () => context.go('/reports')),
+              _quick(Icons.bar_chart, 'Reports', () => context.go('/reports')),
             ]),
             const SizedBox(height: 16),
-            SectionCard(title: 'Sales — last 6 months', child: _Bars(months: months)),
+            SectionCard(title: 'Sales vs Expenses — last 6 months', child: _Bars(months: months)),
             LayoutBuilder(builder: (context, c) {
               final recentCard = SectionCard(
-                title: 'Recent invoices',
+                title: 'Recent documents',
                 trailing: TextButton(onPressed: () => context.go('/invoices'), child: const Text('View all')),
                 padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
                 child: recent.isEmpty
@@ -156,28 +177,38 @@ class _Bars extends StatelessWidget {
   final List<Map> months;
   @override
   Widget build(BuildContext context) {
-    final maxV = months.fold<double>(0, (m, e) => toD(e['total']) > m ? toD(e['total']) : m);
-    final color = Theme.of(context).colorScheme.primary;
-    return SizedBox(
-      height: 190,
-      child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-        for (final m in months)
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 6),
-              child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
-                FittedBox(child: Text(toD(m['total']) > 0 ? rupeeShort(m['total']) : '', style: const TextStyle(fontSize: 11))),
-                const SizedBox(height: 4),
-                Container(
-                  height: maxV == 0 ? 2 : 2 + 130 * toD(m['total']) / maxV,
-                  decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(6)),
-                ),
-                const SizedBox(height: 6),
-                Text(monthLabel('${m['month']}'), style: TextStyle(color: Colors.grey.shade700, fontSize: 12)),
-              ]),
+    final maxV = months.fold<double>(0, (m, e) => [m, toD(e['total']), toD(e['expense'])].reduce((a, b) => a > b ? a : b));
+    double h(dynamic v) => maxV == 0 ? 2 : 2 + 120 * toD(v) / maxV;
+    Widget legend(Color c, String t) => Row(mainAxisSize: MainAxisSize.min, children: [
+          Container(width: 12, height: 12, decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(3))),
+          const SizedBox(width: 6),
+          Text(t, style: const TextStyle(fontSize: 12)),
+        ]);
+    return Column(children: [
+      Row(children: [legend(Brand.teal, 'Sales'), const SizedBox(width: 16), legend(Brand.gold, 'Expenses')]),
+      const SizedBox(height: 10),
+      SizedBox(
+        height: 190,
+        child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          for (final m in months)
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
+                  FittedBox(child: Text(toD(m['total']) > 0 ? rupeeShort(m['total']) : '', style: const TextStyle(fontSize: 11))),
+                  const SizedBox(height: 4),
+                  Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                    Expanded(child: Container(height: h(m['total']), decoration: BoxDecoration(color: Brand.teal, borderRadius: BorderRadius.circular(5)))),
+                    const SizedBox(width: 3),
+                    Expanded(child: Container(height: h(m['expense']), decoration: BoxDecoration(color: Brand.gold, borderRadius: BorderRadius.circular(5)))),
+                  ]),
+                  const SizedBox(height: 6),
+                  Text(monthLabel('${m['month']}'), style: TextStyle(color: Colors.grey.shade700, fontSize: 12)),
+                ]),
+              ),
             ),
-          ),
-      ]),
-    );
+        ]),
+      ),
+    ]);
   }
 }

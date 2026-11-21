@@ -4,10 +4,12 @@ import 'package:go_router/go_router.dart';
 
 import '../core/api.dart';
 import '../core/companies.dart';
+import '../core/docs.dart';
 import '../core/format.dart';
 import '../core/gst.dart';
 import '../core/states.dart';
 import '../widgets/common.dart';
+import '../core/brand.dart';
 
 class _Line {
   _Line({Map? from}) {
@@ -53,7 +55,8 @@ class _Line {
 }
 
 class InvoiceFormScreen extends StatefulWidget {
-  const InvoiceFormScreen({super.key, this.invoiceId, this.customerId, this.copyFromId});
+  const InvoiceFormScreen({super.key, this.invoiceId, this.customerId, this.copyFromId, this.docType = DocType.invoice});
+  final DocType docType;
   final String? invoiceId;
   final String? customerId;
   final String? copyFromId;
@@ -66,6 +69,9 @@ class _InvoiceFormScreenState extends State<InvoiceFormScreen> {
   bool _loading = true, _saving = false;
   String? _error;
 
+  late DocType _type = widget.docType;
+  String _prefix = '';
+  final _refInvoice = TextEditingController();
   String? _companyId;
   Map<String, dynamic>? _customer;
   final _invoiceNo = TextEditingController();
@@ -94,7 +100,7 @@ class _InvoiceFormScreenState extends State<InvoiceFormScreen> {
     for (final l in _lines) {
       l.dispose();
     }
-    for (final c in [_invoiceNo, _shipName, _shipAddress, _vehicle, _po, _notes, _received]) {
+    for (final c in [_refInvoice, _invoiceNo, _shipName, _shipAddress, _vehicle, _po, _notes, _received]) {
       c.dispose();
     }
     super.dispose();
@@ -110,6 +116,8 @@ class _InvoiceFormScreenState extends State<InvoiceFormScreen> {
       if (_editing || widget.copyFromId != null) {
         final inv = Map<String, dynamic>.from(await Api.instance.get('/invoices/${widget.invoiceId ?? widget.copyFromId}'));
         _companyId = inv['company'];
+        _type = DocType.of(inv['docType']);
+        _refInvoice.text = '${inv['refInvoiceNo'] ?? ''}';
         _customer = Map<String, dynamic>.from(await Api.instance.get('/customers/${inv['customer']}'));
         _posCode = '${inv['placeOfSupplyCode'] ?? _customer!['stateCode']}';
         for (final it in List<Map>.from(inv['items'])) {
@@ -121,6 +129,7 @@ class _InvoiceFormScreenState extends State<InvoiceFormScreen> {
         _notes.text = '${inv['notes'] ?? ''}';
         if (_editing) {
           _invoiceNo.text = '${inv['invoiceNo']}';
+          _prefix = '${inv['invoicePrefix'] ?? ''}';
           _invoiceDate = '${inv['invoiceDate']}';
           _dueDate = '${inv['dueDate'] ?? ''}';
           final cust = _customer!;
@@ -157,15 +166,16 @@ class _InvoiceFormScreenState extends State<InvoiceFormScreen> {
 
   Future<void> _loadNextNumber() async {
     if (_companyId == null) return;
-    final r = await Api.instance.get('/invoices/next-number', {'company': _companyId});
+    final r = await Api.instance.get('/invoices/next-number', {'company': _companyId, 'type': _type.key});
     _invoiceNo.text = '${r['invoiceNo']}';
+    _prefix = '${r['prefix'] ?? ''}';
     _dueDays = (r['dueDays'] as num?)?.toInt() ?? 15;
     _setDueFromDays();
   }
 
   void _setDueFromDays() {
     final d = parseYmd(_invoiceDate);
-    _dueDate = d == null || _dueDays <= 0 ? '' : ymdOf(d.add(Duration(days: _dueDays)));
+    _dueDate = d == null || _dueDays <= 0 || _type.secondDateLabel == null ? '' : ymdOf(d.add(Duration(days: _dueDays)));
   }
 
   Map<String, dynamic>? get _company => Companies.instance.byId(_companyId);
@@ -231,6 +241,8 @@ class _InvoiceFormScreenState extends State<InvoiceFormScreen> {
       if (l.qtyV <= 0) return showSnack(context, 'Enter quantity for ${l.name.text}', error: true);
     }
     final body = <String, dynamic>{
+      'docType': _type.key,
+      'refInvoiceNo': _refInvoice.text.trim(),
       'company': _companyId,
       'customer': _customer!['_id'],
       'invoiceNo': int.tryParse(_invoiceNo.text.trim()),
@@ -242,8 +254,8 @@ class _InvoiceFormScreenState extends State<InvoiceFormScreen> {
       'vehicleNo': _vehicle.text.trim(),
       'poNumber': _po.text.trim(),
       'notes': _notes.text.trim(),
-      if (!_editing) 'receivedAmount': double.tryParse(_received.text.replaceAll(',', '')) ?? 0,
-      if (!_editing) 'paymentMode': _mode,
+      if (!_editing && _type.isInvoice) 'receivedAmount': double.tryParse(_received.text.replaceAll(',', '')) ?? 0,
+      if (!_editing && _type.isInvoice) 'paymentMode': _mode,
     };
     setState(() => _saving = true);
     try {
@@ -252,7 +264,7 @@ class _InvoiceFormScreenState extends State<InvoiceFormScreen> {
           : await Api.instance.post('/invoices', body);
       Companies.instance.load();
       if (!mounted) return;
-      showSnack(context, _editing ? 'Invoice updated' : 'Invoice ${invNo(r)} saved');
+      showSnack(context, _editing ? '${_type.label} updated' : '${_type.label} ${invNo(r)} saved');
       if (_editing) {
         context.pop(true);
       } else {
@@ -269,7 +281,7 @@ class _InvoiceFormScreenState extends State<InvoiceFormScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(_editing ? 'Edit Invoice' : 'New Invoice'),
+        title: Text('${_editing ? 'Edit' : 'New'} ${_type.label}'),
         actions: [
           if (!_loading && _error == null)
             Padding(
@@ -301,7 +313,7 @@ class _InvoiceFormScreenState extends State<InvoiceFormScreen> {
           maxWidth: 980,
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             SectionCard(
-              title: 'Invoice details',
+              title: '${_type.label} details',
               child: Column(children: [
                 DropdownButtonFormField<String>(
                   initialValue: _companyId,
@@ -328,19 +340,27 @@ class _InvoiceFormScreenState extends State<InvoiceFormScreen> {
                     keyboardType: TextInputType.number,
                     inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                     decoration: InputDecoration(
-                      labelText: 'Invoice No.',
-                      prefixText: '${_company?['invoicePrefix'] ?? ''}',
+                      labelText: '${_type.label} No.',
+                      prefixText: _prefix,
                     ),
                   ),
                   DateField(
-                    label: 'Invoice date',
+                    label: _type.isInvoice ? 'Invoice date' : 'Date',
                     value: _invoiceDate,
                     onChanged: (v) => setState(() {
                       _invoiceDate = v;
                       if (!_editing) _setDueFromDays();
                     }),
                   ),
-                  DateField(label: 'Due date', value: _dueDate, clearable: true, onChanged: (v) => setState(() => _dueDate = v)),
+                  if (_type.secondDateLabel != null)
+                    DateField(
+                      label: _type.secondDateLabel!.replaceAll(':', ''),
+                      value: _dueDate,
+                      clearable: true,
+                      onChanged: (v) => setState(() => _dueDate = v),
+                    ),
+                  if (_type == DocType.creditNote)
+                    TextFormField(controller: _refInvoice, decoration: const InputDecoration(labelText: 'Against Invoice No.')),
                 ]),
               ]),
             ),
@@ -424,7 +444,7 @@ class _InvoiceFormScreenState extends State<InvoiceFormScreen> {
             FilledButton.icon(
               onPressed: _saving ? null : _save,
               icon: const Icon(Icons.save),
-              label: Text(_editing ? 'Update Invoice' : 'Save Invoice'),
+              label: Text(_editing ? 'Update ${_type.label}' : 'Save ${_type.label}'),
             ),
             const SizedBox(height: 40),
           ]),
@@ -495,9 +515,9 @@ class _InvoiceFormScreenState extends State<InvoiceFormScreen> {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8F9FC),
+        color: Brand.background,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE3E7EF)),
+        border: Border.all(color: Brand.border),
       ),
       child: Column(children: [
         Row(children: [
@@ -567,7 +587,7 @@ class _InvoiceFormScreenState extends State<InvoiceFormScreen> {
           alignment: Alignment.centerRight,
           child: Text(amountInWords(c.total), textAlign: TextAlign.right, style: TextStyle(color: Colors.grey.shade700, fontSize: 12)),
         ),
-        if (!_editing) ...[
+        if (!_editing && _type.isInvoice) ...[
           const Divider(height: 24),
           Row(children: [
             Expanded(
@@ -602,4 +622,3 @@ class _InvoiceFormScreenState extends State<InvoiceFormScreen> {
   }
 }
 
-const paymentModes = ['Cash', 'UPI', 'Bank', 'Cheque', 'Card'];

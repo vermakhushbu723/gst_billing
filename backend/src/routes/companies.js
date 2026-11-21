@@ -8,7 +8,7 @@ const router = Router();
 
 const FIELDS = [
   'name', 'tagline', 'address', 'city', 'stateCode', 'pincode', 'mobile', 'email', 'gstin', 'pan',
-  'bank', 'terms', 'invoicePrefix', 'nextInvoiceNo', 'dueDays', 'color', 'logo', 'signature', 'active',
+  'bank', 'terms', 'invoicePrefix', 'docPrefixes', 'nextInvoiceNo', 'dueDays', 'color', 'logo', 'signature', 'active',
 ];
 const MAX_IMAGE = 1_500_000; // ~1.1 MB binary as data URL
 

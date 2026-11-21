@@ -15,14 +15,20 @@ gst_billing/
 | Screen | What it does |
 |---|---|
 | Login | Email/mobile + password (admin or staff) |
-| Dashboard | Today / month sales, outstanding, GST, 6-month chart, recent invoices, top pending, company switcher |
-| Invoices | List with search, company, status (unpaid/paid/cancelled) and date filters |
-| New / Edit invoice | Company, auto invoice no., dates, customer, place of supply, items from products, live CGST/SGST/IGST, amount received |
-| Invoice view | PDF preview, **Print**, **WhatsApp**, Download/Share, Original/Duplicate/Triplicate, payments, cancel/restore, duplicate, delete |
-| Customers | List with pending balance, add/edit (GSTIN → state + PAN auto-filled), customer ledger with WhatsApp payment reminder |
-| Products | List, add/edit (rate, unit, GST %, HSN) |
-| Companies | 5 firms: logo, signature, address, GSTIN, bank, terms, invoice prefix and next number, colour |
-| Reports | Sales register, GST rate-wise summary, B2B/B2C, print as PDF, export CSV (Excel) |
+| Dashboard | Today / month sales, outstanding, GST, received, expenses, profit, open quotations, sales vs expenses chart, quick actions |
+| Invoices | List with search, company, status and date filters, totals |
+| Quotations | Estimates in the same format; **convert to invoice** in one tap |
+| Delivery Challans | Goods sent before billing; convert to invoice |
+| Credit Notes | Sales returns against an invoice; reduce customer balance and GST |
+| New / Edit document | Company, auto number per type and company, dates, customer, place of supply, items, live CGST/SGST/IGST, amount received |
+| Document view | PDF preview, **Print**, **WhatsApp**, Download/Share, Original/Duplicate/Triplicate, payments, convert, cancel/restore, duplicate, delete |
+| Payments In | All money received; **Receive Payment** settles the oldest unpaid invoices first |
+| Expenses | Kharcha by company and category, with totals |
+| Customers | Pending balance, add/edit (GSTIN → state + PAN), ledger with running balance, statement PDF, WhatsApp reminder |
+| Products | Rate, unit, GST %, HSN |
+| Companies | 5 firms: logo, signature, address, GSTIN, bank, terms, prefixes and numbering, colour |
+| Units, GST & Lists | Admin edits units, GST rates, payment modes and expense categories (nothing hard-coded) |
+| Reports | Sales register, GST summary (net of credit notes), B2B/B2C, P&L, customer-wise, item-wise, credit notes, expenses; print + CSV |
 | Settings / Users | Profile, change password, admin manages staff logins |
 
 ## WhatsApp

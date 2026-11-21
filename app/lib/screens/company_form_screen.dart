@@ -9,6 +9,7 @@ import '../core/api.dart';
 import '../core/companies.dart';
 import '../core/states.dart';
 import '../widgets/common.dart';
+import '../core/brand.dart';
 
 const _palette = ['#000000', '#1F4E9C', '#0B7A75', '#2E7D32', '#B71C1C', '#6A1B9A', '#E65100', '#37474F'];
 
@@ -24,7 +25,7 @@ class _CompanyFormScreenState extends State<CompanyFormScreen> {
   final _c = {
     for (final k in [
       'name', 'tagline', 'address', 'city', 'pincode', 'mobile', 'email', 'gstin', 'pan',
-      'accountName', 'ifsc', 'accountNo', 'bankName', 'branch', 'upiId', 'terms', 'invoicePrefix', 'nextInvoiceNo', 'dueDays',
+      'accountName', 'ifsc', 'accountNo', 'bankName', 'branch', 'upiId', 'terms', 'invoicePrefix', 'nextInvoiceNo', 'dueDays', 'qtPrefix', 'dcPrefix', 'cnPrefix',
     ])
       k: TextEditingController(),
   };
@@ -41,6 +42,9 @@ class _CompanyFormScreenState extends State<CompanyFormScreen> {
       _load();
     } else {
       _c['nextInvoiceNo']!.text = '1';
+      _c['qtPrefix']!.text = 'QT-';
+      _c['dcPrefix']!.text = 'DC-';
+      _c['cnPrefix']!.text = 'CN-';
       _c['dueDays']!.text = '15';
       _c['terms']!.text = 'Goods once sold will not be taken back or exchanged\nAll disputes are subject to Mumbai jurisdiction only';
     }
@@ -68,6 +72,10 @@ class _CompanyFormScreenState extends State<CompanyFormScreen> {
       for (final k in ['accountName', 'ifsc', 'accountNo', 'bankName', 'branch', 'upiId']) {
         _c[k]!.text = '${bank[k] ?? ''}';
       }
+      final dp = Map<String, dynamic>.from(c['docPrefixes'] ?? {});
+      _c['qtPrefix']!.text = '${dp['quotation'] ?? 'QT-'}';
+      _c['dcPrefix']!.text = '${dp['challan'] ?? 'DC-'}';
+      _c['cnPrefix']!.text = '${dp['credit_note'] ?? 'CN-'}';
       _c['terms']!.text = List<String>.from((c['terms'] ?? []).map((e) => '$e')).join('\n');
       _stateCode = '${c['stateCode'] ?? '27'}';
       _color = '${c['color'] ?? '#000000'}';
@@ -122,6 +130,7 @@ class _CompanyFormScreenState extends State<CompanyFormScreen> {
       },
       'terms': t('terms').split('\n').map((e) => e.trim()).where((e) => e.isNotEmpty).toList(),
       'invoicePrefix': t('invoicePrefix'),
+      'docPrefixes': {'quotation': t('qtPrefix'), 'challan': t('dcPrefix'), 'credit_note': t('cnPrefix')},
       'nextInvoiceNo': int.tryParse(t('nextInvoiceNo')) ?? 1,
       'dueDays': int.tryParse(t('dueDays')) ?? 0,
       'color': _color,
@@ -244,12 +253,20 @@ class _CompanyFormScreenState extends State<CompanyFormScreen> {
                           ]),
                         ),
                         SectionCard(
-                          title: 'Invoice settings',
+                          title: 'Numbering & invoice settings',
                           child: Column(children: [
                             pair(
                               f('invoicePrefix', 'Invoice prefix (optional)', helper: 'e.g. OM/ — leave empty for plain numbers'),
                               f('nextInvoiceNo', 'Next invoice number', kb: TextInputType.number, fmt: [FilteringTextInputFormatter.digitsOnly]),
                             ),
+                            gap,
+                            Row(children: [
+                              Expanded(child: f('qtPrefix', 'Quotation prefix')),
+                              const SizedBox(width: 12),
+                              Expanded(child: f('dcPrefix', 'Challan prefix')),
+                              const SizedBox(width: 12),
+                              Expanded(child: f('cnPrefix', 'Credit note prefix')),
+                            ]),
                             gap,
                             f('dueDays', 'Payment due in (days)', kb: TextInputType.number, fmt: [FilteringTextInputFormatter.digitsOnly]),
                             gap,
@@ -279,9 +296,9 @@ class _CompanyFormScreenState extends State<CompanyFormScreen> {
           height: 100,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            color: const Color(0xFFF4F6FA),
+            color: Brand.background,
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: const Color(0xFFD5DAE3)),
+            border: Border.all(color: Brand.border),
           ),
           child: bytes == null
               ? Column(mainAxisSize: MainAxisSize.min, children: [

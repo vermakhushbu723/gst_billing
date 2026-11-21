@@ -14,6 +14,7 @@ import '../core/format.dart';
 import '../core/save_file_io.dart' if (dart.library.js_interop) '../core/save_file_web.dart' as saver;
 import '../widgets/common.dart';
 import '../widgets/company_selector.dart';
+import '../core/brand.dart';
 
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
@@ -213,15 +214,16 @@ class _ReportsScreenState extends State<ReportsScreen> {
         crossAxisSpacing: 12,
         childAspectRatio: cols == 4 ? 2.6 : (w < 420 ? 1.55 : 2.2),
         children: [
-          StatCard(label: 'Total sales', value: rupeeShort(t['total']), sub: '${t['count']} invoices', icon: Icons.receipt_long, color: Colors.indigo),
-          StatCard(label: 'Taxable value', value: rupeeShort(t['taxable']), icon: Icons.summarize_outlined, color: Colors.blue),
-          StatCard(label: 'Total GST', value: rupeeShort(t['tax']), sub: 'C ${rupeeShort(t['cgst'])} • S ${rupeeShort(t['sgst'])} • I ${rupeeShort(t['igst'])}', icon: Icons.percent, color: Colors.teal),
+          StatCard(label: 'Total sales', value: rupeeShort(t['total']), sub: '${t['count']} invoices', icon: Icons.receipt_long, color: Brand.navy),
+          StatCard(label: 'Taxable value', value: rupeeShort(t['taxable']), icon: Icons.summarize_outlined, color: Brand.teal),
+          StatCard(label: 'Total GST', value: rupeeShort(t['tax']), sub: 'C ${rupeeShort(t['cgst'])} • S ${rupeeShort(t['sgst'])} • I ${rupeeShort(t['igst'])}', icon: Icons.percent, color: Brand.gold),
           StatCard(label: 'Pending', value: rupeeShort(t['balance']), sub: 'Received ${rupeeShort(t['received'])}', icon: Icons.account_balance_wallet, color: Colors.red),
         ],
       ),
       const SizedBox(height: 12),
+      _profitCard(),
       SectionCard(
-        title: 'GST rate-wise summary (for GSTR-1 / 3B)',
+        title: 'GST rate-wise summary (net of credit notes, for GSTR-1 / 3B)',
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: DataTable(
@@ -314,6 +316,101 @@ class _ReportsScreenState extends State<ReportsScreen> {
                       ),
                   ],
                 ),
+              ),
+      ),
+      ..._extraSections(),
+    ];
+  }
+
+  Widget _table(List<String> heads, List<List<String>> rows, {Set<int> numeric = const {}}) => SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: DataTable(
+          headingRowHeight: 38,
+          columns: [for (var i = 0; i < heads.length; i++) DataColumn(label: Text(heads[i]), numeric: numeric.contains(i))],
+          rows: [for (final r in rows) DataRow(cells: [for (final c in r) DataCell(Text(c))])],
+        ),
+      );
+
+  Widget _profitCard() {
+    final p = Map<String, dynamic>.from(_data!['profit'] ?? {});
+    final profit = toD(p['profit']);
+    Widget row(String l, String v, {bool strong = false, Color? color}) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Row(children: [
+            Expanded(child: Text(l, style: TextStyle(fontWeight: strong ? FontWeight.w700 : null))),
+            Text(v, style: TextStyle(fontWeight: strong ? FontWeight.w800 : FontWeight.w600, color: color, fontSize: strong ? 17 : 14)),
+          ]),
+        );
+    return SectionCard(
+      title: 'Profit & Loss (simple)',
+      child: Column(children: [
+        row('Sales (taxable value)', rupee(p['sales'])),
+        row('Less: Sales returns (credit notes)', '− ${rupee(p['returns'])}'),
+        row('Net sales', rupee(p['netSales']), strong: true),
+        row('Less: Expenses', '− ${rupee(p['expenses'])}'),
+        const Divider(),
+        row(profit >= 0 ? 'Profit' : 'Loss', rupee(profit.abs()), strong: true, color: profit >= 0 ? Colors.green.shade700 : Colors.red.shade700),
+        const SizedBox(height: 4),
+        row('Net GST payable on sales', rupee(p['gstPayable'])),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Text('Purchase cost / input GST is not tracked, so this is sales minus expenses only.', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+        ),
+      ]),
+    );
+  }
+
+  List<Widget> _extraSections() {
+    final cn = Map<String, dynamic>.from(_data!['creditNotes'] ?? {});
+    final cnRows = List<Map>.from(cn['rows'] ?? []);
+    final cnT = Map<String, dynamic>.from(cn['totals'] ?? {});
+    final byCustomer = List<Map>.from(_data!['byCustomer'] ?? []);
+    final byItem = List<Map>.from(_data!['byItem'] ?? []);
+    final exp = Map<String, dynamic>.from(_data!['expenses'] ?? {});
+    final byCat = Map<String, dynamic>.from(exp['byCategory'] ?? {});
+    return [
+      SectionCard(
+        title: 'Customer-wise sales',
+        child: byCustomer.isEmpty
+            ? const Text('No sales in this period')
+            : _table(
+                ['Customer', 'GSTIN', 'Invoices', 'Taxable', 'GST', 'Total', 'Pending'],
+                [for (final c in byCustomer) ['${c['name']}', '${c['gstin'] ?? ''}', '${c['count']}', money(c['taxable']), money(c['tax']), money(c['total']), money(c['balance'])]],
+                numeric: {2, 3, 4, 5, 6},
+              ),
+      ),
+      SectionCard(
+        title: 'Item-wise sales',
+        child: byItem.isEmpty
+            ? const Text('No sales in this period')
+            : _table(
+                ['Item', 'HSN', 'Qty', 'Taxable', 'GST', 'Amount'],
+                [for (final i in byItem) ['${i['name']}', '${i['hsn'] ?? ''}', '${qtyStr(i['qty'])} ${i['unit'] ?? ''}', money(i['taxable']), money(i['tax']), money(i['amount'])]],
+                numeric: {2, 3, 4, 5},
+              ),
+      ),
+      SectionCard(
+        title: 'Credit notes (sales returns) — ${cnT['count'] ?? 0}',
+        child: cnRows.isEmpty
+            ? const Text('No credit notes in this period')
+            : _table(
+                ['Date', 'No.', 'Customer', 'Against Inv', 'Taxable', 'GST', 'Total'],
+                [
+                  for (final r in cnRows)
+                    [dmy(r['invoiceDate']), invNo(r), '${r['billTo']?['name'] ?? ''}', '${r['refInvoiceNo'] ?? ''}', money(r['taxableAmount']), money(r['totalTax']), money(r['total'])],
+                  ['', '', 'TOTAL', '', money(cnT['taxable']), money(cnT['tax']), money(cnT['total'])],
+                ],
+                numeric: {4, 5, 6},
+              ),
+      ),
+      SectionCard(
+        title: 'Expenses by category — ${rupee(exp['total'])}',
+        child: byCat.isEmpty
+            ? const Text('No expenses in this period')
+            : _table(
+                ['Category', 'Amount'],
+                [for (final e in (byCat.entries.toList()..sort((a, b) => toD(b.value).compareTo(toD(a.value))))) [e.key, money(e.value)]],
+                numeric: {1},
               ),
       ),
     ];

@@ -10,6 +10,7 @@ import { Customer } from '../models/Customer.js';
 import { HttpError, requireAdmin } from '../middleware/auth.js';
 import { computeInvoice, paymentStatus, round2 } from '../utils/gst.js';
 import { stateName } from '../utils/states.js';
+import { addDays, docTypeOf, istToday, prefixFor } from '../utils/docs.js';
 import { config } from '../config.js';
 
 const router = Router();
@@ -26,20 +27,29 @@ function companySnapshot(c) {
   };
 }
 
-function settle(inv) {
+/** Sets received/balance/status. Only invoices carry payments. */
+export function settle(inv) {
+  if (inv.docType && inv.docType !== 'invoice') {
+    inv.payments = [];
+    inv.receivedAmount = 0;
+    inv.balance = 0;
+    if (!['cancelled', 'converted'].includes(inv.status)) inv.status = inv.docType === 'credit_note' ? 'issued' : 'open';
+    return;
+  }
   const received = round2((inv.payments || []).reduce((s, p) => s + (Number(p.amount) || 0), 0));
   inv.receivedAmount = received;
   inv.balance = round2(Math.max(0, inv.total - received));
   if (inv.status !== 'cancelled') inv.status = paymentStatus(inv.total, received);
 }
 
-async function nextNumber(companyId) {
+async function nextNumber(companyId, docType) {
   const company = await Company.findById(companyId);
-  const last = await Invoice.findOne({ company: companyId }).sort({ invoiceNo: -1 }).select('invoiceNo').lean();
-  return Math.max(company?.nextInvoiceNo || 1, (last?.invoiceNo || 0) + 1);
+  const last = await Invoice.findOne({ company: companyId, docType }).sort({ invoiceNo: -1 }).select('invoiceNo').lean();
+  const base = docType === 'invoice' ? company?.nextInvoiceNo || 1 : 1;
+  return Math.max(base, (last?.invoiceNo || 0) + 1);
 }
 
-// Builds every derived field of an invoice from the request body.
+// Builds every derived field of a document from the request body.
 async function fillInvoice(inv, body) {
   const company = await Company.findById(body.company || inv.company);
   if (!company) throw new HttpError(400, 'Select a company');
@@ -52,7 +62,7 @@ async function fillInvoice(inv, body) {
     if (Number(it.rate) < 0) throw new HttpError(400, `Rate cannot be negative for ${it.name}`);
   }
   const invoiceDate = body.invoiceDate || inv.invoiceDate;
-  if (!DATE_RE.test(invoiceDate || '')) throw new HttpError(400, 'Invoice date is required');
+  if (!DATE_RE.test(invoiceDate || '')) throw new HttpError(400, 'Date is required');
   const dueDate = body.dueDate !== undefined ? body.dueDate : inv.dueDate;
   if (dueDate && !DATE_RE.test(dueDate)) throw new HttpError(400, 'Due date is invalid');
 
@@ -64,7 +74,7 @@ async function fillInvoice(inv, body) {
   inv.customer = customer._id;
   inv.invoiceDate = invoiceDate;
   inv.dueDate = dueDate || '';
-  inv.invoicePrefix = company.invoicePrefix || '';
+  inv.invoicePrefix = prefixFor(company, inv.docType || 'invoice');
   inv.companySnapshot = companySnapshot(company);
   inv.billTo = {
     name: customer.name, address: customer.billingAddress, gstin: customer.gstin, pan: customer.pan,
@@ -83,7 +93,13 @@ async function fillInvoice(inv, body) {
   if (body.notes !== undefined) inv.notes = String(body.notes);
   if (body.vehicleNo !== undefined) inv.vehicleNo = String(body.vehicleNo);
   if (body.poNumber !== undefined) inv.poNumber = String(body.poNumber);
+  if (body.refInvoiceNo !== undefined) inv.refInvoiceNo = String(body.refInvoiceNo).trim();
   return company;
+}
+
+async function bumpCounter(inv) {
+  if (inv.docType !== 'invoice') return;
+  await Company.updateOne({ _id: inv.company, nextInvoiceNo: { $lte: inv.invoiceNo } }, { $set: { nextInvoiceNo: inv.invoiceNo + 1 } });
 }
 
 router.get('/', async (req, res) => {
@@ -91,7 +107,7 @@ router.get('/', async (req, res) => {
   const q = String(req.query.q || '').trim();
   const page = Math.max(1, Number(req.query.page) || 1);
   const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 30));
-  const filter = {};
+  const filter = { docType: req.query.type === 'all' ? { $exists: true } : docTypeOf(req.query.type) };
   if (company && company !== 'all') filter.company = company;
   if (customer) filter.customer = customer;
   if (status && status !== 'all') filter.status = status === 'due' ? { $in: ['unpaid', 'partial'] } : status;
@@ -105,64 +121,71 @@ router.get('/', async (req, res) => {
     if (/^\d+$/.test(q)) or.push({ invoiceNo: Number(q) });
     filter.$or = or;
   }
-  const [items, total] = await Promise.all([
+  const [items, total, sum] = await Promise.all([
     Invoice.find(filter)
-      .select('invoiceNo invoicePrefix invoiceDate dueDate total receivedAmount balance status company customer billTo.name billTo.phone companySnapshot.name')
+      .select('docType invoiceNo invoicePrefix invoiceDate dueDate total receivedAmount balance status company customer billTo.name billTo.phone companySnapshot.name')
       .sort({ invoiceDate: -1, invoiceNo: -1 })
       .skip((page - 1) * limit)
       .limit(limit)
       .lean(),
     Invoice.countDocuments(filter),
+    Invoice.aggregate([
+      { $match: { ...filter, ...(filter.company ? { company: new mongoose.Types.ObjectId(String(filter.company)) } : {}), ...(filter.customer ? { customer: new mongoose.Types.ObjectId(String(filter.customer)) } : {}), status: filter.status || { $ne: 'cancelled' } } },
+      { $group: { _id: null, total: { $sum: '$total' }, balance: { $sum: '$balance' } } },
+    ]),
   ]);
-  res.json({ items, total, page, pages: Math.ceil(total / limit) });
+  res.json({ items, total, page, pages: Math.ceil(total / limit), sumTotal: round2(sum[0]?.total || 0), sumBalance: round2(sum[0]?.balance || 0) });
 });
 
 router.get('/next-number', async (req, res) => {
   if (!mongoose.isValidObjectId(req.query.company)) throw new HttpError(400, 'company required');
   const company = await Company.findById(req.query.company).lean();
   if (!company) throw new HttpError(404, 'Company not found');
-  res.json({ invoiceNo: await nextNumber(req.query.company), prefix: company.invoicePrefix || '', dueDays: company.dueDays ?? 15 });
+  const docType = docTypeOf(req.query.type);
+  res.json({ invoiceNo: await nextNumber(req.query.company, docType), prefix: prefixFor(company, docType), dueDays: company.dueDays ?? 15 });
 });
 
 router.get('/:id', async (req, res) => {
   const inv = await Invoice.findById(req.params.id).lean();
-  if (!inv) throw new HttpError(404, 'Invoice not found');
+  if (!inv) throw new HttpError(404, 'Document not found');
   res.json(inv);
 });
 
 router.post('/', async (req, res) => {
   const body = req.body || {};
-  const inv = new Invoice({ createdBy: req.user._id, shareToken: crypto.randomBytes(18).toString('hex') });
+  const docType = docTypeOf(body.docType);
+  const inv = new Invoice({ docType, createdBy: req.user._id, shareToken: crypto.randomBytes(18).toString('hex') });
   const company = await fillInvoice(inv, body);
 
   if (body.invoiceNo) {
     inv.invoiceNo = Number(body.invoiceNo);
-    if (!(inv.invoiceNo > 0)) throw new HttpError(400, 'Invoice number is invalid');
+    if (!(inv.invoiceNo > 0)) throw new HttpError(400, 'Number is invalid');
   } else {
-    inv.invoiceNo = await nextNumber(company._id);
+    inv.invoiceNo = await nextNumber(company._id, docType);
   }
-  const received = round2(Number(body.receivedAmount) || 0);
+  const received = docType === 'invoice' ? round2(Number(body.receivedAmount) || 0) : 0;
   inv.payments = received > 0
     ? [{ date: inv.invoiceDate, amount: received, mode: body.paymentMode || 'Cash', note: 'Received with invoice' }]
     : [];
   settle(inv);
   await inv.save();
-  await Company.updateOne({ _id: company._id, nextInvoiceNo: { $lte: inv.invoiceNo } }, { $set: { nextInvoiceNo: inv.invoiceNo + 1 } });
+  await bumpCounter(inv);
   res.status(201).json(inv);
 });
 
 router.put('/:id', async (req, res) => {
   const inv = await Invoice.findById(req.params.id);
-  if (!inv) throw new HttpError(404, 'Invoice not found');
+  if (!inv) throw new HttpError(404, 'Document not found');
+  if (inv.status === 'converted') throw new HttpError(400, 'Already converted to invoice, it cannot be edited');
   const body = req.body || {};
-  const company = await fillInvoice(inv, body);
+  await fillInvoice(inv, body);
   if (body.invoiceNo && Number(body.invoiceNo) !== inv.invoiceNo) {
     inv.invoiceNo = Number(body.invoiceNo);
-    if (!(inv.invoiceNo > 0)) throw new HttpError(400, 'Invoice number is invalid');
+    if (!(inv.invoiceNo > 0)) throw new HttpError(400, 'Number is invalid');
   }
   settle(inv);
   await inv.save();
-  await Company.updateOne({ _id: company._id, nextInvoiceNo: { $lte: inv.invoiceNo } }, { $set: { nextInvoiceNo: inv.invoiceNo + 1 } });
+  await bumpCounter(inv);
   res.json(inv);
 });
 
@@ -174,7 +197,7 @@ router.delete('/:id', requireAdmin, async (req, res) => {
 
 router.post('/:id/cancel', async (req, res) => {
   const inv = await Invoice.findById(req.params.id);
-  if (!inv) throw new HttpError(404, 'Invoice not found');
+  if (!inv) throw new HttpError(404, 'Document not found');
   inv.status = 'cancelled';
   await inv.save();
   res.json(inv);
@@ -182,20 +205,53 @@ router.post('/:id/cancel', async (req, res) => {
 
 router.post('/:id/restore', async (req, res) => {
   const inv = await Invoice.findById(req.params.id);
-  if (!inv) throw new HttpError(404, 'Invoice not found');
-  inv.status = 'unpaid';
+  if (!inv) throw new HttpError(404, 'Document not found');
+  inv.status = inv.convertedTo ? 'converted' : 'unpaid';
   settle(inv);
   await inv.save();
   res.json(inv);
 });
 
+// Quotation / delivery challan -> new tax invoice with the same items.
+router.post('/:id/convert', async (req, res) => {
+  const src = await Invoice.findById(req.params.id);
+  if (!src) throw new HttpError(404, 'Document not found');
+  if (!['quotation', 'challan'].includes(src.docType)) throw new HttpError(400, 'Only quotations and challans can be converted');
+  if (src.status !== 'open') throw new HttpError(400, src.status === 'converted' ? 'Already converted to invoice' : 'Document is cancelled');
+  const company = await Company.findById(src.company);
+  const date = DATE_RE.test(req.body?.invoiceDate || '') ? req.body.invoiceDate : istToday();
+  const inv = new Invoice({ docType: 'invoice', createdBy: req.user._id, shareToken: crypto.randomBytes(18).toString('hex'), convertedFrom: src._id });
+  await fillInvoice(inv, {
+    company: src.company,
+    customer: src.customer,
+    invoiceDate: date,
+    dueDate: company?.dueDays > 0 ? addDays(date, company.dueDays) : '',
+    placeOfSupplyCode: src.placeOfSupplyCode,
+    items: src.items.map((i) => (i.toObject ? i.toObject() : i)),
+    shipTo: src.shipTo,
+    notes: src.notes,
+    vehicleNo: src.vehicleNo,
+    poNumber: src.poNumber,
+  });
+  inv.invoiceNo = await nextNumber(src.company, 'invoice');
+  inv.payments = [];
+  settle(inv);
+  await inv.save();
+  await bumpCounter(inv);
+  src.status = 'converted';
+  src.convertedTo = inv._id;
+  await src.save();
+  res.status(201).json(inv);
+});
+
 router.post('/:id/payments', async (req, res) => {
   const inv = await Invoice.findById(req.params.id);
   if (!inv) throw new HttpError(404, 'Invoice not found');
+  if (inv.docType !== 'invoice') throw new HttpError(400, 'Payments can be added only to invoices');
   if (inv.status === 'cancelled') throw new HttpError(400, 'Invoice is cancelled');
   const amount = round2(Number(req.body?.amount) || 0);
   if (!(amount > 0)) throw new HttpError(400, 'Amount must be more than 0');
-  const date = DATE_RE.test(req.body?.date || '') ? req.body.date : new Date().toISOString().slice(0, 10);
+  const date = DATE_RE.test(req.body?.date || '') ? req.body.date : istToday();
   inv.payments.push({ date, amount, mode: req.body?.mode || 'Cash', note: req.body?.note || '' });
   settle(inv);
   await inv.save();
@@ -215,7 +271,7 @@ router.delete('/:id/payments/:pid', async (req, res) => {
 // as a link (web/desktop) — on phones the file itself is shared directly.
 router.post('/:id/share-pdf', upload.single('pdf'), async (req, res) => {
   const inv = await Invoice.findById(req.params.id);
-  if (!inv) throw new HttpError(404, 'Invoice not found');
+  if (!inv) throw new HttpError(404, 'Document not found');
   if (!req.file || !req.file.buffer.subarray(0, 5).toString().startsWith('%PDF')) throw new HttpError(400, 'PDF file required');
   if (!inv.shareToken) {
     inv.shareToken = crypto.randomBytes(18).toString('hex');

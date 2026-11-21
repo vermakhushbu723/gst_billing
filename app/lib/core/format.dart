@@ -53,7 +53,13 @@ String invoiceFileName(Map inv) {
   final party = '${inv['billTo']?['name'] ?? 'Invoice'}'
       .replaceAll(RegExp(r'[^A-Za-z0-9]+'), '_')
       .replaceAll(RegExp(r'^_|_$'), '');
-  return '${party}_Sales_Invoice_${invNo(inv)}.pdf';
+  final word = switch ('${inv['docType'] ?? 'invoice'}') {
+    'quotation' => 'Quotation',
+    'credit_note' => 'Credit_Note',
+    'challan' => 'Delivery_Challan',
+    _ => 'Sales_Invoice',
+  };
+  return '${party}_${word}_${invNo(inv)}.pdf';
 }
 
 /// Digits for wa.me: adds India code to 10 digit numbers.

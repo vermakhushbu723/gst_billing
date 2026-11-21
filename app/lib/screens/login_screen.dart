@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/auth.dart';
+import '../core/brand.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -32,7 +33,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final color = Theme.of(context).colorScheme.primary;
     return Scaffold(
       body: Center(
         child: SingleChildScrollView(
@@ -46,11 +46,9 @@ class _LoginScreenState extends State<LoginScreen> {
                   key: _form,
                   child: AutofillGroup(
                     child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                      Icon(Icons.receipt_long, size: 56, color: color),
-                      const SizedBox(height: 12),
-                      const Text('GST Billing', textAlign: TextAlign.center, style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800)),
-                      const SizedBox(height: 4),
-                      Text('Tax invoices for all your companies', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey.shade600)),
+                      const Center(child: BrandLogo(height: 150, full: true)),
+                      const SizedBox(height: 10),
+                      Text('GST billing for all your companies', textAlign: TextAlign.center, style: TextStyle(color: Brand.slate)),
                       const SizedBox(height: 28),
                       TextFormField(
                         controller: _email,

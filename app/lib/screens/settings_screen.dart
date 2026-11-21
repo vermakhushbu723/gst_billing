@@ -90,6 +90,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     onTap: () => context.push('/users'),
                   ),
                 ListTile(
+                  leading: const Icon(Icons.tune),
+                  title: const Text('Units, GST rates & lists'),
+                  subtitle: const Text('Units, GST rates, payment modes, expense categories'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.go('/masters'),
+                ),
+                ListTile(
                   leading: const Icon(Icons.business_outlined),
                   title: const Text('Companies'),
                   subtitle: const Text('Logo, address, GSTIN, bank, terms, invoice numbers'),

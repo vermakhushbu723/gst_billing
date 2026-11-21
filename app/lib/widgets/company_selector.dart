@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/companies.dart';
+import '../core/brand.dart';
 
 /// Dropdown to switch between "All companies" and one company.
 class CompanySelector extends StatelessWidget {
@@ -20,7 +21,7 @@ class CompanySelector extends StatelessWidget {
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: const Color(0xFFD5DAE3)),
+            border: Border.all(color: Brand.border),
           ),
           child: DropdownButtonHideUnderline(
             child: DropdownButton<String>(

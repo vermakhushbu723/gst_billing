@@ -31,7 +31,11 @@ const taxRowSchema = new mongoose.Schema(
 
 const invoiceSchema = new mongoose.Schema(
   {
+    docType: { type: String, enum: ['invoice', 'quotation', 'credit_note', 'challan'], default: 'invoice' },
     company: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', required: true },
+    refInvoiceNo: { type: String, default: '' }, // credit note: against which invoice
+    convertedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'Invoice' },
+    convertedFrom: { type: mongoose.Schema.Types.ObjectId, ref: 'Invoice' },
     customer: { type: mongoose.Schema.Types.ObjectId, ref: 'Customer', required: true },
     invoiceNo: { type: Number, required: true },
     invoicePrefix: { type: String, default: '' },
@@ -55,7 +59,8 @@ const invoiceSchema = new mongoose.Schema(
     total: Number,
     receivedAmount: { type: Number, default: 0 },
     balance: { type: Number, default: 0 },
-    status: { type: String, enum: ['unpaid', 'partial', 'paid', 'cancelled'], default: 'unpaid' },
+    // invoice: unpaid/partial/paid; quotation & challan: open/converted; credit note: issued
+    status: { type: String, enum: ['unpaid', 'partial', 'paid', 'cancelled', 'open', 'converted', 'issued'], default: 'unpaid' },
     payments: [paymentSchema],
     notes: { type: String, default: '' },
     vehicleNo: { type: String, default: '' },
@@ -66,7 +71,7 @@ const invoiceSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
-invoiceSchema.index({ company: 1, invoiceNo: 1 }, { unique: true });
+invoiceSchema.index({ company: 1, docType: 1, invoiceNo: 1 }, { unique: true });
 invoiceSchema.index({ invoiceDate: -1 });
 invoiceSchema.index({ customer: 1 });
 

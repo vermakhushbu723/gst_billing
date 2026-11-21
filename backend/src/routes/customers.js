@@ -22,9 +22,16 @@ router.get('/', async (req, res) => {
   if (q) filter.$or = [{ name: new RegExp(escapeRe(q), 'i') }, { phone: new RegExp(escapeRe(q), 'i') }, { gstin: new RegExp(escapeRe(q), 'i') }];
   const customers = await Customer.find(filter).sort({ name: 1 }).lean();
   // Outstanding balance per customer
+  // invoices add to the balance, credit notes reduce it
   const dues = await Invoice.aggregate([
-    { $match: { status: { $ne: 'cancelled' } } },
-    { $group: { _id: '$customer', balance: { $sum: '$balance' }, sales: { $sum: '$total' } } },
+    { $match: { status: { $ne: 'cancelled' }, docType: { $in: ['invoice', 'credit_note'] } } },
+    {
+      $group: {
+        _id: '$customer',
+        balance: { $sum: { $cond: [{ $eq: ['$docType', 'credit_note'] }, { $multiply: ['$total', -1] }, '$balance'] } },
+        sales: { $sum: { $cond: [{ $eq: ['$docType', 'invoice'] }, '$total', 0] } },
+      },
+    },
   ]);
   const map = new Map(dues.map((d) => [String(d._id), d]));
   res.json(customers.map((c) => ({
@@ -44,17 +51,38 @@ router.get('/:id/statement', async (req, res) => {
   const c = await Customer.findById(req.params.id).lean();
   if (!c) throw new HttpError(404, 'Customer not found');
   const invoices = await Invoice.find({ customer: c._id })
-    .select('invoiceNo invoicePrefix invoiceDate dueDate total receivedAmount balance status company companySnapshot.name')
+    .select('docType invoiceNo invoicePrefix invoiceDate dueDate total receivedAmount balance status company companySnapshot.name billTo.name payments')
     .sort({ invoiceDate: -1, invoiceNo: -1 })
     .lean();
-  const live = invoices.filter((i) => i.status !== 'cancelled');
+  const live = invoices.filter((i) => i.status !== 'cancelled' && i.docType === 'invoice');
+  const credits = invoices.filter((i) => i.status !== 'cancelled' && i.docType === 'credit_note');
+  const creditTotal = round2(credits.reduce((s, i) => s + i.total, 0));
+
+  // Ledger: invoices (debit), payments and credit notes (credit), oldest first, running balance.
+  const entries = [];
+  if (c.openingBalance) entries.push({ date: '', type: 'Opening balance', ref: '', debit: c.openingBalance > 0 ? c.openingBalance : 0, credit: c.openingBalance < 0 ? -c.openingBalance : 0 });
+  for (const i of live) {
+    const no = `${i.invoicePrefix || ''}${i.invoiceNo}`;
+    entries.push({ date: i.invoiceDate, type: 'Invoice', ref: no, id: i._id, debit: i.total, credit: 0 });
+    for (const p of i.payments || []) entries.push({ date: p.date, type: `Payment (${p.mode || ''})`, ref: no, id: i._id, debit: 0, credit: p.amount });
+  }
+  for (const i of credits) entries.push({ date: i.invoiceDate, type: 'Credit note', ref: `${i.invoicePrefix || ''}${i.invoiceNo}`, id: i._id, debit: 0, credit: i.total });
+  entries.sort((a, b) => (a.date || '').localeCompare(b.date || '') || b.debit - a.debit);
+  let run = 0;
+  for (const e of entries) {
+    run = round2(run + e.debit - e.credit);
+    e.balance = run;
+  }
+
   res.json({
     customer: c,
-    invoices,
+    invoices: invoices.map(({ payments, ...rest }) => rest),
+    ledger: entries,
     totals: {
       sales: round2(live.reduce((s, i) => s + i.total, 0)),
       received: round2(live.reduce((s, i) => s + i.receivedAmount, 0)),
-      balance: round2(live.reduce((s, i) => s + i.balance, 0) + (c.openingBalance || 0)),
+      credit: creditTotal,
+      balance: round2(live.reduce((s, i) => s + i.balance, 0) - creditTotal + (c.openingBalance || 0)),
       count: live.length,
     },
   });

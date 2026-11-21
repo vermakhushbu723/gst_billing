@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../core/docs.dart';
 import '../core/format.dart';
 
 void showSnack(BuildContext context, String msg, {bool error = false}) {
@@ -139,6 +140,9 @@ class StatusChip extends StatelessWidget {
       'paid' => ('PAID', Colors.green.shade700),
       'partial' => ('PARTIAL', Colors.orange.shade800),
       'cancelled' => ('CANCELLED', Colors.grey.shade600),
+      'open' => ('OPEN', Colors.blueGrey.shade700),
+      'converted' => ('CONVERTED', Colors.teal.shade700),
+      'issued' => ('ISSUED', Colors.purple.shade700),
       _ => ('UNPAID', Colors.red.shade700),
     };
     return Container(
@@ -196,16 +200,18 @@ class InvoiceTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cancelled = inv['status'] == 'cancelled';
+    final type = DocType.of(inv['docType']);
+    final no = type.isInvoice ? '#${invNo(inv)}' : '${type.label} #${invNo(inv)}';
     return ListTile(
       onTap: onTap,
       leading: CircleAvatar(
         backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-        child: const Icon(Icons.receipt_long, size: 20),
+        child: Icon(type.icon, size: 20),
       ),
-      title: Text(byInvoiceNo ? 'Invoice #${invNo(inv)}' : '${inv['billTo']?['name'] ?? ''}', maxLines: 1, overflow: TextOverflow.ellipsis,
+      title: Text(byInvoiceNo ? '${type.label} #${invNo(inv)}' : '${inv['billTo']?['name'] ?? ''}', maxLines: 1, overflow: TextOverflow.ellipsis,
           style: TextStyle(fontWeight: FontWeight.w600, decoration: cancelled ? TextDecoration.lineThrough : null)),
       subtitle: Text(
-        '${byInvoiceNo ? '' : '#${invNo(inv)} • '}${dmy(inv['invoiceDate'])}${showCompany ? ' • ${inv['companySnapshot']?['name'] ?? ''}' : ''}',
+        '${byInvoiceNo ? '' : '$no • '}${dmy(inv['invoiceDate'])}${showCompany ? ' • ${inv['companySnapshot']?['name'] ?? ''}' : ''}',
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
