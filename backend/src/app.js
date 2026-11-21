@@ -17,6 +17,7 @@ import publicRoutes from './routes/public.js';
 import paymentRoutes from './routes/payments.js';
 import expenseRoutes from './routes/expenses.js';
 import settingRoutes from './routes/settings.js';
+import notificationRoutes from './routes/notifications.js';
 
 export function createApp() {
   const app = express();
@@ -39,6 +40,7 @@ export function createApp() {
   app.use('/api/payments', requireAuth, paymentRoutes);
   app.use('/api/expenses', requireAuth, expenseRoutes);
   app.use('/api/settings', requireAuth, settingRoutes);
+  app.use('/api/notifications', requireAuth, notificationRoutes);
 
   app.use('/api', (_req, res) => res.status(404).json({ message: 'Not found' }));
   app.use(errorHandler);

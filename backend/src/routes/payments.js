@@ -7,6 +7,7 @@ import { HttpError } from '../middleware/auth.js';
 import { round2 } from '../utils/gst.js';
 import { istToday } from '../utils/docs.js';
 import { settle } from './invoices.js';
+import { money, notify } from '../utils/notify.js';
 
 const router = Router();
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -69,6 +70,9 @@ router.post('/', async (req, res) => {
     allocated.push({ invoice: inv._id, invoiceNo: `${inv.invoicePrefix || ''}${inv.invoiceNo}`, amount: part });
     left = round2(left - part);
   }
+  const cust = await Customer.findById(customer).select('name').lean();
+  await notify({ type: 'payment', severity: 'success', actor: req.user._id, link: `/customers/${customer}`,
+    title: `Payment received ${money(amount)}`, body: `${cust?.name || ''} • ${mode || 'Cash'} • ${allocated.map((a) => '#' + a.invoiceNo).join(', ')}` });
   res.status(201).json({ receipt, amount, allocated });
 });
 

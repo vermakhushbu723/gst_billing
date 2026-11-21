@@ -22,13 +22,19 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="mybillwill">
-  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="icons/mbw-apple-180.png?v=2">
 
-  <!-- Favicon -->
-  <link rel="icon" type="image/png" href="favicon.png">
+  <!-- Favicon (new file names so browsers drop the old cached Flutter icon) -->
+  <link rel="icon" type="image/png" sizes="32x32" href="mbw-favicon-32.png?v=2">
+  <link rel="icon" type="image/png" sizes="64x64" href="mbw-favicon.png?v=2">
+  <link rel="shortcut icon" href="favicon.ico?v=2">
+
+  <!-- Start downloading the app and the graphics engine while the splash shows -->
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+  <link rel="preload" href="main.dart.js" as="script">
 
   <title>mybillwill - GST Billing</title>
-  <link rel="manifest" href="manifest.json">
+  <link rel="manifest" href="manifest.json?v=2">
   <style id="splash-screen-style">
     html {
       height: 100%

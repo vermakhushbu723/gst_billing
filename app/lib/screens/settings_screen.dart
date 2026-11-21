@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../core/api.dart';
 import '../core/auth.dart';
 import '../widgets/common.dart';
+import '../widgets/top_actions.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -50,7 +51,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     final user = AuthState.instance.user ?? {};
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: AppBar(title: const Text('Settings'), actions: topActions()),
       body: ListView(padding: const EdgeInsets.all(16), children: [
         Constrained(
           maxWidth: 700,

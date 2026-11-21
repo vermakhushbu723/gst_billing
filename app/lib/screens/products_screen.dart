@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../core/api.dart';
 import '../core/format.dart';
 import '../widgets/common.dart';
+import '../widgets/top_actions.dart';
 
 class ProductsScreen extends StatefulWidget {
   const ProductsScreen({super.key});
@@ -50,7 +51,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
   Widget build(BuildContext context) {
     final items = (_items ?? []).where((p) => _q.isEmpty || '${p['name']}'.toLowerCase().contains(_q.toLowerCase())).toList();
     return Scaffold(
-      appBar: AppBar(title: const Text('Products / Items')),
+      appBar: AppBar(title: const Text('Products / Items'), actions: topActions()),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _open('/products/new'),
         icon: const Icon(Icons.add),

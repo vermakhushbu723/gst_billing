@@ -5,6 +5,7 @@ import '../core/api.dart';
 import '../core/auth.dart';
 import '../core/companies.dart';
 import '../widgets/common.dart';
+import '../widgets/top_actions.dart';
 
 class CompaniesScreen extends StatefulWidget {
   const CompaniesScreen({super.key});
@@ -55,7 +56,7 @@ class _CompaniesScreenState extends State<CompaniesScreen> {
     final admin = AuthState.instance.isAdmin;
     final list = Companies.instance.list;
     return Scaffold(
-      appBar: AppBar(title: Text('Companies (${list.length})')),
+      appBar: AppBar(title: Text('Companies (${list.length})'), actions: topActions()),
       floatingActionButton: admin
           ? FloatingActionButton.extended(onPressed: () => _open('/companies/new'), icon: const Icon(Icons.add_business), label: const Text('Add Company'))
           : null,

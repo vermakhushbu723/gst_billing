@@ -10,6 +10,7 @@ import '../core/masters.dart';
 import '../widgets/common.dart';
 import '../widgets/company_selector.dart';
 import '../widgets/period_filter.dart';
+import '../widgets/top_actions.dart';
 
 /// Business expenses (kharcha) per company, with category totals.
 class ExpensesScreen extends StatefulWidget {
@@ -138,7 +139,7 @@ class _ExpensesScreenState extends State<ExpensesScreen> {
     final byCat = Map<String, dynamic>.from(_data?['byCategory'] ?? {});
     final multi = Companies.instance.selected == 'all';
     return Scaffold(
-      appBar: AppBar(title: const Text('Expenses')),
+      appBar: AppBar(title: const Text('Expenses'), actions: topActions()),
       floatingActionButton: FloatingActionButton.extended(onPressed: () => _edit(), icon: const Icon(Icons.add), label: const Text('Add Expense')),
       body: RefreshIndicator(
         onRefresh: _load,

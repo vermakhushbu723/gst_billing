@@ -95,19 +95,25 @@ class _Sidebar extends StatelessWidget {
   Widget build(BuildContext context) {
     final admin = AuthState.instance.isAdmin;
     return Container(
-      width: compact ? 84 : 240,
+      width: compact ? 76 : 228,
       color: Colors.white,
       child: Column(children: [
         Padding(
-          padding: EdgeInsets.fromLTRB(compact ? 10 : 20, 14, compact ? 10 : 20, 8),
-          child: compact ? const BrandLogo(height: 34) : const BrandLogo(height: 84, full: true),
+          padding: EdgeInsets.fromLTRB(compact ? 10 : 22, 12, compact ? 10 : 22, 6),
+          child: SizedBox(
+            height: 46,
+            child: Align(
+              alignment: compact ? Alignment.center : Alignment.centerLeft,
+              child: compact ? const BrandLogo(height: 30) : const BrandWordmark(size: 21),
+            ),
+          ),
         ),
         Expanded(
           child: ListView(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), children: [
             for (final g in _groups) ...[
               if (g.$1.isNotEmpty)
                 Padding(
-                  padding: EdgeInsets.fromLTRB(compact ? 0 : 12, 14, 0, 4),
+                  padding: EdgeInsets.fromLTRB(compact ? 0 : 12, 12, 0, 4),
                   child: compact
                       ? const Divider(height: 1)
                       : Text(g.$1, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1, color: Brand.slate)),
@@ -117,19 +123,11 @@ class _Sidebar extends StatelessWidget {
             ],
           ]),
         ),
-        const Divider(height: 1),
-        Padding(
-          padding: const EdgeInsets.all(8),
-          child: compact
-              ? IconButton(tooltip: 'Logout', icon: const Icon(Icons.logout), onPressed: () => AuthState.instance.logout())
-              : ListTile(
-                  dense: true,
-                  leading: const Icon(Icons.logout, color: Brand.slate),
-                  title: Text('${AuthState.instance.user?['name'] ?? ''}', maxLines: 1, overflow: TextOverflow.ellipsis),
-                  subtitle: const Text('Logout'),
-                  onTap: () => AuthState.instance.logout(),
-                ),
-        ),
+        if (!compact)
+          const Padding(
+            padding: EdgeInsets.fromLTRB(22, 8, 22, 14),
+            child: Text(Brand.tagline, style: TextStyle(fontSize: 11, color: Brand.slate)),
+          ),
       ]),
     );
   }
@@ -144,15 +142,15 @@ class _Sidebar extends StatelessWidget {
         borderRadius: BorderRadius.circular(10),
         onTap: () => context.go(d.path),
         child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: compact ? 0 : 12, vertical: 10),
+          padding: EdgeInsets.symmetric(horizontal: compact ? 0 : 12, vertical: 8),
           child: compact
               ? Center(child: Icon(d.icon, color: color))
               : Row(children: [
-                  Icon(d.icon, color: color, size: 21),
+                  Icon(d.icon, color: color, size: 20),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(d.label,
-                        style: TextStyle(color: selected ? Brand.teal : Brand.navy, fontWeight: selected ? FontWeight.w700 : FontWeight.w500)),
+                        style: TextStyle(fontSize: 14, color: selected ? Brand.teal : Brand.navy, fontWeight: selected ? FontWeight.w700 : FontWeight.w500)),
                   ),
                 ]),
         ),

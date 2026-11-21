@@ -9,6 +9,7 @@ import '../widgets/common.dart';
 import '../widgets/company_selector.dart';
 import '../widgets/payment_dialog.dart';
 import '../widgets/period_filter.dart';
+import '../widgets/top_actions.dart';
 
 /// Payment-In: all money received from customers.
 class PaymentsScreen extends StatefulWidget {
@@ -55,7 +56,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     final items = List<Map>.from(_data?['items'] ?? []);
     final byMode = Map<String, dynamic>.from(_data?['byMode'] ?? {});
     return Scaffold(
-      appBar: AppBar(title: const Text('Payments Received')),
+      appBar: AppBar(title: const Text('Payments Received'), actions: topActions()),
       floatingActionButton: FloatingActionButton.extended(onPressed: _receive, icon: const Icon(Icons.add_card), label: const Text('Receive Payment')),
       body: RefreshIndicator(
         onRefresh: _load,

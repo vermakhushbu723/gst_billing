@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../core/api.dart';
 import '../core/format.dart';
 import '../widgets/common.dart';
+import '../widgets/top_actions.dart';
 
 class CustomersScreen extends StatefulWidget {
   const CustomersScreen({super.key});
@@ -50,7 +51,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
   Widget build(BuildContext context) {
     final totalDue = (_items ?? []).fold<double>(0, (s, c) => s + toD(c['balance']));
     return Scaffold(
-      appBar: AppBar(title: const Text('Customers')),
+      appBar: AppBar(title: const Text('Customers'), actions: topActions()),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _open('/customers/new'),
         icon: const Icon(Icons.person_add_alt),

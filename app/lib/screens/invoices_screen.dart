@@ -9,6 +9,7 @@ import '../core/docs.dart';
 import '../core/format.dart';
 import '../widgets/common.dart';
 import '../widgets/company_selector.dart';
+import '../widgets/top_actions.dart';
 
 class InvoicesScreen extends StatefulWidget {
   const InvoicesScreen({super.key, this.docType = DocType.invoice});
@@ -94,7 +95,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('${_type.plural}${_total > 0 ? ' ($_total)' : ''}')),
+      appBar: AppBar(title: Text('${_type.plural}${_total > 0 ? ' ($_total)' : ''}'), actions: topActions()),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _open(_newPath),
         icon: const Icon(Icons.add),

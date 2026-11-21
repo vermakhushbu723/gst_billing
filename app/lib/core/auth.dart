@@ -20,7 +20,16 @@ class AuthState extends ChangeNotifier {
     if (token == null) return;
     Api.instance.token = token;
     final cached = prefs.getString('user');
-    if (cached != null) user = Map<String, dynamic>.from(jsonDecode(cached));
+    if (cached != null) {
+      user = Map<String, dynamic>.from(jsonDecode(cached));
+      // Open the app right away; confirm the session in the background.
+      _refresh();
+    } else {
+      await _refresh();
+    }
+  }
+
+  Future<void> _refresh() async {
     try {
       final res = await Api.instance.get('/auth/me');
       await _saveUser(Map<String, dynamic>.from(res['user']));

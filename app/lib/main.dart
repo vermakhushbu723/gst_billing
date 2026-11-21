@@ -6,6 +6,7 @@ import 'core/auth.dart';
 import 'core/brand.dart';
 import 'core/docs.dart';
 import 'core/masters.dart';
+import 'core/notifications.dart';
 import 'screens/companies_screen.dart';
 import 'screens/company_form_screen.dart';
 import 'screens/customer_detail_screen.dart';
@@ -31,9 +32,22 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   usePathUrlStrategy();
   await AuthState.instance.init();
-  if (AuthState.instance.loggedIn) Masters.instance.ensure();
+  void onAuth() {
+    if (AuthState.instance.loggedIn) {
+      Masters.instance.ensure();
+      Notifications.instance.start();
+    } else {
+      Notifications.instance.stop();
+    }
+  }
+
+  onAuth();
+  var wasLoggedIn = AuthState.instance.loggedIn;
   AuthState.instance.addListener(() {
-    if (AuthState.instance.loggedIn) Masters.instance.ensure();
+    if (AuthState.instance.loggedIn != wasLoggedIn) {
+      wasLoggedIn = AuthState.instance.loggedIn;
+      onAuth();
+    }
   });
   runApp(const GstBillingApp());
 }
@@ -148,7 +162,8 @@ class GstBillingApp extends StatelessWidget {
           foregroundColor: Brand.navy,
           surfaceTintColor: Colors.transparent,
           elevation: 0,
-          scrolledUnderElevation: 1,
+          scrolledUnderElevation: 0,
+          shape: Border(bottom: BorderSide(color: Brand.border)),
           centerTitle: false,
           titleTextStyle: TextStyle(fontFamily: 'Roboto', fontSize: 19, fontWeight: FontWeight.w700, color: Brand.navy),
         ),

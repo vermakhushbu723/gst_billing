@@ -9,6 +9,7 @@ import '../widgets/common.dart';
 import '../widgets/company_selector.dart';
 import '../widgets/payment_dialog.dart';
 import '../core/brand.dart';
+import '../widgets/top_actions.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -51,7 +52,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
           if (MediaQuery.sizeOf(context).width < 900) ...[const BrandLogo(height: 30), const SizedBox(width: 10)],
           Flexible(child: Text('Hello, $name', overflow: TextOverflow.ellipsis)),
         ]),
-        actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh), tooltip: 'Refresh')],
+        actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh), tooltip: 'Refresh'),
+          ...topActions(),
+        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _open('/invoices/new'),

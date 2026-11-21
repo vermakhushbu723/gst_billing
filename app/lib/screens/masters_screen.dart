@@ -5,6 +5,7 @@ import '../core/brand.dart';
 import '../core/format.dart';
 import '../core/masters.dart';
 import '../widgets/common.dart';
+import '../widgets/top_actions.dart';
 
 /// Editable lists used across the app: units, GST rates, payment modes, expense categories.
 class MastersScreen extends StatefulWidget {
@@ -105,7 +106,7 @@ class _MastersScreenState extends State<MastersScreen> {
           ]),
         );
     return Scaffold(
-      appBar: AppBar(title: const Text('Masters')),
+      appBar: AppBar(title: const Text('Masters'), actions: topActions()),
       body: _loading
           ? const LoadingView()
           : _error != null

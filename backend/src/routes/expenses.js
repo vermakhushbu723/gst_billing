@@ -4,6 +4,7 @@ import { Expense } from '../models/Expense.js';
 import { Company } from '../models/Company.js';
 import { HttpError } from '../middleware/auth.js';
 import { round2 } from '../utils/gst.js';
+import { money, notify } from '../utils/notify.js';
 
 const router = Router();
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -44,6 +45,8 @@ router.post('/', async (req, res) => {
   apply(e, req.body || {});
   await validate(e);
   await e.save();
+  await notify({ type: 'expense', severity: 'info', actor: req.user._id, company: e.company, link: '/expenses',
+    title: `Expense added ${money(e.amount)}`, body: `${e.category}${e.paidTo ? ' • ' + e.paidTo : ''} • by ${req.user.name}` });
   res.status(201).json(e);
 });
 

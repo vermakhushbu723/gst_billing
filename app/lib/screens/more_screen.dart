@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../core/auth.dart';
 import '../core/brand.dart';
 import '../widgets/common.dart';
+import '../widgets/top_actions.dart';
 
 /// Phone menu for everything that does not fit in the bottom bar.
 class MoreScreen extends StatelessWidget {
@@ -27,9 +28,9 @@ class MoreScreen extends StatelessWidget {
           Card(child: Column(children: tiles)),
         ]);
     return Scaffold(
-      appBar: AppBar(title: const Text('More')),
+      appBar: AppBar(title: const Text('More'), actions: topActions()),
       body: ListView(padding: const EdgeInsets.all(16), children: [
-        const Center(child: BrandLogo(height: 100, full: true)),
+        const Center(child: BrandLogo(height: 72, full: true)),
         const SizedBox(height: 8),
         Card(
           child: ListTile(

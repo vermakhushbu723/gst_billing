@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/api.dart';
 import '../core/auth.dart';
 import '../widgets/common.dart';
+import '../widgets/top_actions.dart';
 
 class UsersScreen extends StatefulWidget {
   const UsersScreen({super.key});
@@ -112,7 +113,7 @@ class _UsersScreenState extends State<UsersScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Users & staff')),
+      appBar: AppBar(title: const Text('Users & staff'), actions: topActions()),
       floatingActionButton: FloatingActionButton.extended(onPressed: () => _edit(), icon: const Icon(Icons.person_add_alt), label: const Text('Add User')),
       body: _error != null && _users == null
           ? ErrorView(message: _error!, onRetry: _load)

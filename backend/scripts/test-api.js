@@ -163,6 +163,34 @@ try {
   const dash2 = await api('GET', '/reports/dashboard');
   assert.equal(typeof dash2.data.monthExpense, 'number');
 
+  // ---- Notifications: events + overdue alerts, per-user read state ----
+  const notes = await api('GET', '/notifications');
+  assert.equal(notes.status, 200);
+  assert.ok(notes.data.items.some((n) => n.type === 'payment'));
+  assert.ok(notes.data.items.some((n) => n.type === 'converted'));
+  assert.ok(notes.data.items.some((n) => n.type === 'expense'));
+  // invoice 291 (due 2026-11-04 by default, unpaid earlier) or any past-due one should raise an overdue alert
+  const overdueInv = await api('POST', '/invoices', { company: om._id, customer: customer._id, invoiceDate: '2025-01-01', dueDate: '2025-01-10', items: [{ name: 'Old', qty: 1, rate: 100, gstRate: 0 }] });
+  assert.equal(overdueInv.status, 201);
+  (await import('../src/routes/notifications.js')).resetAlertScan();
+  const withAlerts = await api('GET', '/notifications?limit=100');
+  assert.ok(withAlerts.data.items.some((n) => n.type === 'overdue' && n.link === `/invoices/${overdueInv.data._id}`), 'overdue alert');
+  (await import('../src/routes/notifications.js')).resetAlertScan();
+  await api('GET', '/notifications');
+  const { Notification } = await import('../src/models/Notification.js');
+  assert.equal(await Notification.countDocuments({ type: 'overdue', link: `/invoices/${overdueInv.data._id}` }), 1, 'alert stored once');
+  // own actions are already read for the actor
+  assert.equal(notes.data.items.filter((n) => !n.read && n.type === 'expense').length, 0);
+  const staffUser = await api('POST', '/users', { name: 'Ravi', email: 'ravi@x.com', password: 'ravi1234' });
+  assert.equal(staffUser.status, 201);
+  const adminToken = token;
+  token = (await api('POST', '/auth/login', { email: 'ravi@x.com', password: 'ravi1234' })).data.token;
+  const cnt = await api('GET', '/notifications/count');
+  assert.ok(cnt.data.unread > 0);
+  await api('POST', '/notifications/read-all');
+  assert.equal((await api('GET', '/notifications/count')).data.unread, 0);
+  token = adminToken;
+
   const staff = await api('POST', '/users', { name: 'Staff', email: 'staff@x.com', password: 'staff123' });
   assert.equal(staff.status, 201);
   token = (await api('POST', '/auth/login', { email: 'staff@x.com', password: 'staff123' })).data.token;

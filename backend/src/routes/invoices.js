@@ -12,6 +12,7 @@ import { computeInvoice, paymentStatus, round2 } from '../utils/gst.js';
 import { stateName } from '../utils/states.js';
 import { addDays, docTypeOf, istToday, prefixFor } from '../utils/docs.js';
 import { config } from '../config.js';
+import { docLabel, docNo, money, notify } from '../utils/notify.js';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -170,6 +171,15 @@ router.post('/', async (req, res) => {
   settle(inv);
   await inv.save();
   await bumpCounter(inv);
+  await notify({
+    type: inv.docType, severity: 'info', actor: req.user._id, company: inv.company, link: `/invoices/${inv._id}`,
+    title: `${docLabel(inv.docType)} #${docNo(inv)} created`,
+    body: `${inv.billTo?.name || ''} • ${money(inv.total)} • by ${req.user.name}`,
+  });
+  if (inv.docType === 'invoice' && inv.receivedAmount > 0) {
+    await notify({ type: 'payment', severity: 'success', actor: req.user._id, company: inv.company, link: `/invoices/${inv._id}`,
+      title: `Payment received ${money(inv.receivedAmount)}`, body: `${inv.billTo?.name || ''} • Invoice #${docNo(inv)}` });
+  }
   res.status(201).json(inv);
 });
 
@@ -200,6 +210,8 @@ router.post('/:id/cancel', async (req, res) => {
   if (!inv) throw new HttpError(404, 'Document not found');
   inv.status = 'cancelled';
   await inv.save();
+  await notify({ type: 'cancelled', severity: 'warning', actor: req.user._id, company: inv.company, link: `/invoices/${inv._id}`,
+    title: `${docLabel(inv.docType)} #${docNo(inv)} cancelled`, body: `${inv.billTo?.name || ''} • ${money(inv.total)} • by ${req.user.name}` });
   res.json(inv);
 });
 
@@ -241,6 +253,8 @@ router.post('/:id/convert', async (req, res) => {
   src.status = 'converted';
   src.convertedTo = inv._id;
   await src.save();
+  await notify({ type: 'converted', severity: 'success', actor: req.user._id, company: inv.company, link: `/invoices/${inv._id}`,
+    title: `${docLabel(src.docType)} #${docNo(src)} converted to Invoice #${docNo(inv)}`, body: `${inv.billTo?.name || ''} • ${money(inv.total)}` });
   res.status(201).json(inv);
 });
 
@@ -255,6 +269,8 @@ router.post('/:id/payments', async (req, res) => {
   inv.payments.push({ date, amount, mode: req.body?.mode || 'Cash', note: req.body?.note || '' });
   settle(inv);
   await inv.save();
+  await notify({ type: 'payment', severity: 'success', actor: req.user._id, company: inv.company, link: `/invoices/${inv._id}`,
+    title: `Payment received ${money(amount)}`, body: `${inv.billTo?.name || ''} • Invoice #${docNo(inv)} • ${req.body?.mode || 'Cash'}` });
   res.json(inv);
 });
 

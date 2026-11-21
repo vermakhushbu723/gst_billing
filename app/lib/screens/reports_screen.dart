@@ -15,6 +15,7 @@ import '../core/save_file_io.dart' if (dart.library.js_interop) '../core/save_fi
 import '../widgets/common.dart';
 import '../widgets/company_selector.dart';
 import '../core/brand.dart';
+import '../widgets/top_actions.dart';
 
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
@@ -164,6 +165,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
             IconButton(tooltip: 'Print / PDF', icon: const Icon(Icons.print), onPressed: _print),
             IconButton(tooltip: 'Export Excel (CSV)', icon: const Icon(Icons.table_view), onPressed: _exportCsv),
           ],
+          ...topActions(),
         ],
       ),
       body: ListView(padding: const EdgeInsets.all(16), children: [
