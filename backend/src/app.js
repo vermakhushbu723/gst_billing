@@ -5,7 +5,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
 import { config } from './config.js';
-import { errorHandler, requireAuth } from './middleware/auth.js';
+import { applyScope, errorHandler, requireAuth } from './middleware/auth.js';
 import authRoutes from './routes/auth.js';
 import userRoutes from './routes/users.js';
 import companyRoutes from './routes/companies.js';
@@ -18,6 +18,7 @@ import paymentRoutes from './routes/payments.js';
 import expenseRoutes from './routes/expenses.js';
 import settingRoutes from './routes/settings.js';
 import notificationRoutes from './routes/notifications.js';
+import exportRoutes from './routes/export.js';
 
 export function createApp() {
   const app = express();
@@ -31,16 +32,19 @@ export function createApp() {
   app.get('/api/health', (_req, res) => res.json({ ok: true }));
   app.use('/api/public', publicRoutes);
   app.use('/api/auth', authRoutes);
-  app.use('/api/users', requireAuth, userRoutes);
-  app.use('/api/companies', requireAuth, companyRoutes);
-  app.use('/api/customers', requireAuth, customerRoutes);
-  app.use('/api/products', requireAuth, productRoutes);
-  app.use('/api/invoices', requireAuth, invoiceRoutes);
-  app.use('/api/reports', requireAuth, reportRoutes);
-  app.use('/api/payments', requireAuth, paymentRoutes);
-  app.use('/api/expenses', requireAuth, expenseRoutes);
-  app.use('/api/settings', requireAuth, settingRoutes);
-  app.use('/api/notifications', requireAuth, notificationRoutes);
+  // applyScope limits company logins to their own company's data.
+  const auth = [requireAuth, applyScope];
+  app.use('/api/users', auth, userRoutes);
+  app.use('/api/companies', auth, companyRoutes);
+  app.use('/api/customers', auth, customerRoutes);
+  app.use('/api/products', auth, productRoutes);
+  app.use('/api/invoices', auth, invoiceRoutes);
+  app.use('/api/reports', auth, reportRoutes);
+  app.use('/api/payments', auth, paymentRoutes);
+  app.use('/api/expenses', auth, expenseRoutes);
+  app.use('/api/settings', auth, settingRoutes);
+  app.use('/api/notifications', auth, notificationRoutes);
+  app.use('/api/export', auth, exportRoutes);
 
   app.use('/api', (_req, res) => res.status(404).json({ message: 'Not found' }));
   app.use(errorHandler);

@@ -7,7 +7,7 @@ import mongoose from 'mongoose';
 import { Invoice } from '../models/Invoice.js';
 import { Company } from '../models/Company.js';
 import { Customer } from '../models/Customer.js';
-import { HttpError, requireAdmin } from '../middleware/auth.js';
+import { HttpError, assertOwn, requireAdmin } from '../middleware/auth.js';
 import { computeInvoice, paymentStatus, round2 } from '../utils/gst.js';
 import { stateName } from '../utils/states.js';
 import { addDays, docTypeOf, istToday, prefixFor } from '../utils/docs.js';
@@ -56,6 +56,7 @@ async function fillInvoice(inv, body) {
   if (!company) throw new HttpError(400, 'Select a company');
   const customer = await Customer.findById(body.customer || inv.customer);
   if (!customer) throw new HttpError(400, 'Select a customer');
+  if (customer.company && String(customer.company) !== String(company._id)) throw new HttpError(400, 'This customer belongs to another company');
   if (!Array.isArray(body.items) || !body.items.length) throw new HttpError(400, 'Add at least one item');
   for (const it of body.items) {
     if (!String(it.name || '').trim()) throw new HttpError(400, 'Every item needs a name');
@@ -147,8 +148,7 @@ router.get('/next-number', async (req, res) => {
 });
 
 router.get('/:id', async (req, res) => {
-  const inv = await Invoice.findById(req.params.id).lean();
-  if (!inv) throw new HttpError(404, 'Document not found');
+  const inv = assertOwn(req, await Invoice.findById(req.params.id).lean());
   res.json(inv);
 });
 
@@ -184,7 +184,7 @@ router.post('/', async (req, res) => {
 });
 
 router.put('/:id', async (req, res) => {
-  const inv = await Invoice.findById(req.params.id);
+  const inv = assertOwn(req, await Invoice.findById(req.params.id));
   if (!inv) throw new HttpError(404, 'Document not found');
   if (inv.status === 'converted') throw new HttpError(400, 'Already converted to invoice, it cannot be edited');
   const body = req.body || {};
@@ -200,13 +200,14 @@ router.put('/:id', async (req, res) => {
 });
 
 router.delete('/:id', requireAdmin, async (req, res) => {
+  assertOwn(req, await Invoice.findById(req.params.id).select('company').lean());
   const inv = await Invoice.findByIdAndDelete(req.params.id);
   if (inv?.shareToken) await fs.rm(path.join(config.uploadDir, 'pdf', `${inv.shareToken}.pdf`), { force: true });
   res.json({ ok: true });
 });
 
 router.post('/:id/cancel', async (req, res) => {
-  const inv = await Invoice.findById(req.params.id);
+  const inv = assertOwn(req, await Invoice.findById(req.params.id));
   if (!inv) throw new HttpError(404, 'Document not found');
   inv.status = 'cancelled';
   await inv.save();
@@ -216,7 +217,7 @@ router.post('/:id/cancel', async (req, res) => {
 });
 
 router.post('/:id/restore', async (req, res) => {
-  const inv = await Invoice.findById(req.params.id);
+  const inv = assertOwn(req, await Invoice.findById(req.params.id));
   if (!inv) throw new HttpError(404, 'Document not found');
   inv.status = inv.convertedTo ? 'converted' : 'unpaid';
   settle(inv);
@@ -226,7 +227,7 @@ router.post('/:id/restore', async (req, res) => {
 
 // Quotation / delivery challan -> new tax invoice with the same items.
 router.post('/:id/convert', async (req, res) => {
-  const src = await Invoice.findById(req.params.id);
+  const src = assertOwn(req, await Invoice.findById(req.params.id));
   if (!src) throw new HttpError(404, 'Document not found');
   if (!['quotation', 'challan'].includes(src.docType)) throw new HttpError(400, 'Only quotations and challans can be converted');
   if (src.status !== 'open') throw new HttpError(400, src.status === 'converted' ? 'Already converted to invoice' : 'Document is cancelled');
@@ -259,7 +260,7 @@ router.post('/:id/convert', async (req, res) => {
 });
 
 router.post('/:id/payments', async (req, res) => {
-  const inv = await Invoice.findById(req.params.id);
+  const inv = assertOwn(req, await Invoice.findById(req.params.id));
   if (!inv) throw new HttpError(404, 'Invoice not found');
   if (inv.docType !== 'invoice') throw new HttpError(400, 'Payments can be added only to invoices');
   if (inv.status === 'cancelled') throw new HttpError(400, 'Invoice is cancelled');
@@ -275,7 +276,7 @@ router.post('/:id/payments', async (req, res) => {
 });
 
 router.delete('/:id/payments/:pid', async (req, res) => {
-  const inv = await Invoice.findById(req.params.id);
+  const inv = assertOwn(req, await Invoice.findById(req.params.id));
   if (!inv) throw new HttpError(404, 'Invoice not found');
   inv.payments = inv.payments.filter((p) => String(p._id) !== req.params.pid);
   settle(inv);
@@ -286,7 +287,7 @@ router.delete('/:id/payments/:pid', async (req, res) => {
 // The app renders the PDF and uploads it here, so it can be sent on WhatsApp
 // as a link (web/desktop) — on phones the file itself is shared directly.
 router.post('/:id/share-pdf', upload.single('pdf'), async (req, res) => {
-  const inv = await Invoice.findById(req.params.id);
+  const inv = assertOwn(req, await Invoice.findById(req.params.id));
   if (!inv) throw new HttpError(404, 'Document not found');
   if (!req.file || !req.file.buffer.subarray(0, 5).toString().startsWith('%PDF')) throw new HttpError(400, 'PDF file required');
   if (!inv.shareToken) {

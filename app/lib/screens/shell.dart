@@ -24,6 +24,7 @@ const _groups = <(String, List<_Dest>)>[
     _Dest('/payments', Icons.payments_outlined, 'Payments In'),
     _Dest('/expenses', Icons.account_balance_wallet_outlined, 'Expenses'),
     _Dest('/reports', Icons.bar_chart_outlined, 'Reports'),
+    _Dest('/export', Icons.download_outlined, 'Export / Download'),
   ]),
   ('MASTERS', [
     _Dest('/customers', Icons.people_outline, 'Customers'),
@@ -45,7 +46,7 @@ const _mobile = [
 
 const _topLevel = {
   '/', '/invoices', '/quotations', '/challans', '/credit-notes', '/payments', '/expenses', '/customers', '/products',
-  '/reports', '/companies', '/masters', '/settings', '/users', '/more',
+  '/reports', '/companies', '/masters', '/settings', '/users', '/more', '/export',
 };
 
 bool _matches(String location, String path) => path == '/' ? location == '/' : location == path || location.startsWith('$path/');
@@ -135,6 +136,7 @@ class _Sidebar extends StatelessWidget {
   Widget _item(BuildContext context, _Dest d) {
     final selected = _matches(location, d.path);
     final color = selected ? Brand.teal : Brand.slate;
+    final label = d.path == '/companies' && AuthState.instance.isCompanyLogin ? 'My Company' : d.path == '/users' ? 'Users & Logins' : d.label;
     final tile = Material(
       color: selected ? Brand.goldLight : Colors.transparent,
       borderRadius: BorderRadius.circular(10),
@@ -149,7 +151,7 @@ class _Sidebar extends StatelessWidget {
                   Icon(d.icon, color: color, size: 20),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: Text(d.label,
+                    child: Text(label,
                         style: TextStyle(fontSize: 14, color: selected ? Brand.teal : Brand.navy, fontWeight: selected ? FontWeight.w700 : FontWeight.w500)),
                   ),
                 ]),
@@ -158,7 +160,7 @@ class _Sidebar extends StatelessWidget {
     );
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
-      child: compact ? Tooltip(message: d.label, child: tile) : tile,
+      child: compact ? Tooltip(message: label, child: tile) : tile,
     );
   }
 }

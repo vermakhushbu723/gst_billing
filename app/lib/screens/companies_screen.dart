@@ -54,10 +54,11 @@ class _CompaniesScreenState extends State<CompaniesScreen> {
   @override
   Widget build(BuildContext context) {
     final admin = AuthState.instance.isAdmin;
+    final superAdmin = AuthState.instance.isSuperAdmin;
     final list = Companies.instance.list;
     return Scaffold(
-      appBar: AppBar(title: Text('Companies (${list.length})'), actions: topActions()),
-      floatingActionButton: admin
+      appBar: AppBar(title: Text(superAdmin ? 'Companies (${list.length})' : 'My Company'), actions: topActions()),
+      floatingActionButton: superAdmin
           ? FloatingActionButton.extended(onPressed: () => _open('/companies/new'), icon: const Icon(Icons.add_business), label: const Text('Add Company'))
           : null,
       body: _loading && list.isEmpty
@@ -87,12 +88,18 @@ class _CompaniesScreenState extends State<CompaniesScreen> {
                                     if ('${c['gstin'] ?? ''}'.isNotEmpty) 'GSTIN ${c['gstin']}',
                                     'Next invoice: ${c['invoicePrefix'] ?? ''}${c['nextInvoiceNo']}',
                                     if ('${c['mobile'] ?? ''}'.isNotEmpty) c['mobile'],
+                                    if (superAdmin) '${c['logins'] ?? 0} login${c['logins'] == 1 ? '' : 's'}',
                                   ].join(' • '),
                                 ),
                                 trailing: admin
                                     ? Row(mainAxisSize: MainAxisSize.min, children: [
-                                        IconButton(icon: const Icon(Icons.edit), onPressed: () => _open('/companies/${c['_id']}/edit')),
-                                        IconButton(icon: const Icon(Icons.delete_outline), onPressed: () => _delete(c)),
+                                        TextButton.icon(
+                                          onPressed: () => _open('/users?company=${c['_id']}'),
+                                          icon: const Icon(Icons.key_outlined, size: 18),
+                                          label: Text(superAdmin ? 'Logins' : 'Staff logins'),
+                                        ),
+                                        IconButton(tooltip: 'Edit', icon: const Icon(Icons.edit), onPressed: () => _open('/companies/${c['_id']}/edit')),
+                                        if (superAdmin) IconButton(tooltip: 'Delete', icon: const Icon(Icons.delete_outline), onPressed: () => _delete(c)),
                                       ])
                                     : null,
                               ),
@@ -101,6 +108,14 @@ class _CompaniesScreenState extends State<CompaniesScreen> {
                             Padding(
                               padding: const EdgeInsets.all(12),
                               child: Text('Only admin can change company details.', style: TextStyle(color: Colors.grey.shade600)),
+                            ),
+                          if (superAdmin)
+                            Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Text(
+                                'Tip: use "Logins" to give each company its own login. That login will see only that company\'s data.',
+                                style: TextStyle(color: Colors.grey.shade700),
+                              ),
                             ),
                         ]),
                       ),

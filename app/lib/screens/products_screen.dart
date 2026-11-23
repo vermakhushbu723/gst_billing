@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import '../core/api.dart';
 import '../core/format.dart';
 import '../widgets/common.dart';
+import '../widgets/company_selector.dart';
+import '../core/companies.dart';
 import '../widgets/top_actions.dart';
 
 class ProductsScreen extends StatefulWidget {
@@ -26,7 +28,8 @@ class _ProductsScreenState extends State<ProductsScreen> {
   Future<void> _load() async {
     setState(() => _error = null);
     try {
-      final r = await Api.instance.get('/products');
+      await Companies.instance.ensure();
+      final r = await Api.instance.get('/products', {'company': Companies.instance.selected});
       if (mounted) setState(() => _items = List<Map>.from(r));
     } catch (e) {
       if (mounted) setState(() => _error = '$e');
@@ -61,7 +64,11 @@ class _ProductsScreenState extends State<ProductsScreen> {
         maxWidth: 1000,
         child: Column(children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: CompanySelector(onChanged: _load),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
             child: TextField(
               decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Search products'),
               onChanged: (v) => setState(() => _q = v.trim()),
@@ -94,6 +101,7 @@ class _ProductsScreenState extends State<ProductsScreen> {
                                     title: Text('${p['name']}', style: const TextStyle(fontWeight: FontWeight.w600)),
                                     subtitle: Text([
                                       'GST ${pct(p['gstRate'])}',
+                                      if (Companies.instance.selected == 'all' && !Companies.instance.locked) Companies.instance.nameOf('${p['company']}'),
                                       if ('${p['hsn'] ?? ''}'.isNotEmpty) 'HSN ${p['hsn']}',
                                     ].join(' • ')),
                                     trailing: Row(mainAxisSize: MainAxisSize.min, children: [

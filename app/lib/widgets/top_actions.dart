@@ -173,15 +173,20 @@ class ProfileMenu extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
               decoration: BoxDecoration(color: Brand.goldLight, borderRadius: BorderRadius.circular(8)),
-              child: Text(u['role'] == 'admin' ? 'Admin' : 'Staff', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Brand.navy)),
+              child: Text(AuthState.instance.roleLabel, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Brand.navy)),
             ),
+            if (AuthState.instance.companyName != null) ...[
+              const SizedBox(height: 4),
+              Text(AuthState.instance.companyName!, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Brand.teal)),
+            ],
           ]),
         ),
         const PopupMenuDivider(),
         const PopupMenuItem(value: '/settings', child: ListTile(dense: true, leading: Icon(Icons.person_outline), title: Text('My profile & password'))),
-        const PopupMenuItem(value: '/companies', child: ListTile(dense: true, leading: Icon(Icons.business_outlined), title: Text('Companies'))),
+        PopupMenuItem(value: '/companies', child: ListTile(dense: true, leading: const Icon(Icons.business_outlined), title: Text(AuthState.instance.isCompanyLogin ? 'My Company' : 'Companies'))),
+        const PopupMenuItem(value: '/export', child: ListTile(dense: true, leading: Icon(Icons.download_outlined), title: Text('Export / Download'))),
         if (AuthState.instance.isAdmin)
-          const PopupMenuItem(value: '/users', child: ListTile(dense: true, leading: Icon(Icons.group_outlined), title: Text('Users & staff'))),
+          const PopupMenuItem(value: '/users', child: ListTile(dense: true, leading: Icon(Icons.group_outlined), title: Text('Users & logins'))),
         const PopupMenuItem(value: '/masters', child: ListTile(dense: true, leading: Icon(Icons.tune), title: Text('Units, GST & lists'))),
         const PopupMenuDivider(),
         PopupMenuItem(
@@ -201,7 +206,7 @@ class ProfileMenu extends StatelessWidget {
             const SizedBox(width: 8),
             Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(name, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Brand.navy)),
-              Text(u['role'] == 'admin' ? 'Admin' : 'Staff', style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+              Text(AuthState.instance.companyName ?? AuthState.instance.roleLabel, style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
             ]),
             const Icon(Icons.expand_more, size: 18, color: Brand.slate),
           ],

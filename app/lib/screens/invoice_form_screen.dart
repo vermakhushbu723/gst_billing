@@ -191,7 +191,7 @@ class _InvoiceFormScreenState extends State<InvoiceFormScreen> {
       context,
       title: 'Select customer',
       load: (q) async => List<Map<String, dynamic>>.from(
-          (await Api.instance.get('/customers', {'q': q}) as List).map((e) => Map<String, dynamic>.from(e))),
+          (await Api.instance.get('/customers', {'q': q, 'company': _companyId}) as List).map((e) => Map<String, dynamic>.from(e))),
       label: (c) => '${c['name']}',
       subtitle: (c) => [c['gstin'], c['phone']].where((e) => '${e ?? ''}'.isNotEmpty).join(' • '),
       addLabel: 'Add new customer',
@@ -213,7 +213,7 @@ class _InvoiceFormScreenState extends State<InvoiceFormScreen> {
       context,
       title: 'Select product',
       load: (q) async => List<Map<String, dynamic>>.from(
-          (await Api.instance.get('/products', {'q': q}) as List).map((e) => Map<String, dynamic>.from(e))),
+          (await Api.instance.get('/products', {'q': q, 'company': _companyId}) as List).map((e) => Map<String, dynamic>.from(e))),
       label: (p) => '${p['name']}',
       subtitle: (p) => '${rupee(p['rate'])} / ${p['unit']} • GST ${pct(p['gstRate'])}${'${p['hsn']}'.isNotEmpty ? ' • HSN ${p['hsn']}' : ''}',
       addLabel: 'Add new product',
@@ -326,7 +326,11 @@ class _InvoiceFormScreenState extends State<InvoiceFormScreen> {
                   onChanged: _editing
                       ? null
                       : (v) async {
-                          setState(() => _companyId = v);
+                          setState(() {
+                            _companyId = v;
+                            // customers belong to one company
+                            if (_customer != null && _customer!['company'] != null && _customer!['company'] != v) _customer = null;
+                          });
                           try {
                             await _loadNextNumber();
                           } catch (_) {}

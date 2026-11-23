@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import mongoose from 'mongoose';
 import { Invoice } from '../models/Invoice.js';
 import { Customer } from '../models/Customer.js';
-import { HttpError } from '../middleware/auth.js';
+import { HttpError, assertOwn } from '../middleware/auth.js';
 import { round2 } from '../utils/gst.js';
 import { istToday } from '../utils/docs.js';
 import { settle } from './invoices.js';
@@ -48,7 +48,8 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
   const { customer, company, mode, note } = req.body || {};
   const amount = round2(Number(req.body?.amount) || 0);
-  if (!mongoose.isValidObjectId(customer) || !(await Customer.exists({ _id: customer }))) throw new HttpError(400, 'Select a customer');
+  if (!mongoose.isValidObjectId(customer)) throw new HttpError(400, 'Select a customer');
+  const custDoc = assertOwn(req, await Customer.findById(customer).select('name company').lean());
   if (!(amount > 0)) throw new HttpError(400, 'Amount must be more than 0');
   const date = DATE_RE.test(req.body?.date || '') ? req.body.date : istToday();
   const filter = { customer, docType: 'invoice', status: { $in: ['unpaid', 'partial'] } };
@@ -70,8 +71,8 @@ router.post('/', async (req, res) => {
     allocated.push({ invoice: inv._id, invoiceNo: `${inv.invoicePrefix || ''}${inv.invoiceNo}`, amount: part });
     left = round2(left - part);
   }
-  const cust = await Customer.findById(customer).select('name').lean();
-  await notify({ type: 'payment', severity: 'success', actor: req.user._id, link: `/customers/${customer}`,
+  const cust = custDoc;
+  await notify({ type: 'payment', severity: 'success', actor: req.user._id, company: cust.company || invoices[0]?.company, link: `/customers/${customer}`,
     title: `Payment received ${money(amount)}`, body: `${cust?.name || ''} • ${mode || 'Cash'} • ${allocated.map((a) => '#' + a.invoiceNo).join(', ')}` });
   res.status(201).json({ receipt, amount, allocated });
 });

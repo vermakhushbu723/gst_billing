@@ -62,8 +62,10 @@ export async function seed() {
     console.log('5 companies created');
   }
 
+  const firstCompany = await Company.findOne().sort({ createdAt: 1 }).select('_id').lean();
   if ((await Customer.countDocuments()) === 0) {
     await Customer.create({
+      company: firstCompany?._id,
       name: 'GUJARAT MILK PRODUCTS LIMITED',
       billingAddress: '17AB, GOVERNMENT INDUSTRIAL ESTATES, HINDUSTAN NAKA, CHARKOP, KANDIVALI WEST, Mumbai City, Maharashtra, Mumbai, Maharashtra, 400067',
       gstin: '27AABCG0233H1Z2',
@@ -74,7 +76,7 @@ export async function seed() {
     });
   }
   if ((await Product.countDocuments()) === 0) {
-    await Product.create({ name: 'ICE CUBES EDIBLE', hsn: '22019010', unit: 'KGS', rate: 2.95, gstRate: 5 });
+    await Product.create({ company: firstCompany?._id, name: 'ICE CUBES EDIBLE', hsn: '22019010', unit: 'KGS', rate: 2.95, gstRate: 5 });
   }
 }
 

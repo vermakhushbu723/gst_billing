@@ -13,6 +13,17 @@ class AuthState extends ChangeNotifier {
   bool get loggedIn => user != null;
   bool get isAdmin => user?['role'] == 'admin';
 
+  /// Company login: tied to one company and sees only its data.
+  String? get companyId => user?['company'] as String?;
+  String? get companyName => user?['companyName'] as String?;
+  bool get isCompanyLogin => companyId != null;
+
+  /// Main admin of the whole software (all companies). Older cached users
+  /// without the flag count as main admin when they have no company.
+  bool get isSuperAdmin => isAdmin && !isCompanyLogin;
+
+  String get roleLabel => isSuperAdmin ? 'Main Admin' : isAdmin ? 'Company Admin' : 'Staff';
+
   Future<void> init() async {
     Api.instance.onUnauthorized = () => logout();
     final prefs = await SharedPreferences.getInstance();

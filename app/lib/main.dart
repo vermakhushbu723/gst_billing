@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import 'core/auth.dart';
 import 'core/brand.dart';
+import 'core/companies.dart';
 import 'core/docs.dart';
 import 'core/masters.dart';
 import 'core/notifications.dart';
@@ -14,6 +15,7 @@ import 'screens/customer_form_screen.dart';
 import 'screens/customers_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/expenses_screen.dart';
+import 'screens/export_screen.dart';
 import 'screens/invoice_form_screen.dart';
 import 'screens/invoice_view_screen.dart';
 import 'screens/invoices_screen.dart';
@@ -25,6 +27,7 @@ import 'screens/product_form_screen.dart';
 import 'screens/products_screen.dart';
 import 'screens/reports_screen.dart';
 import 'screens/settings_screen.dart';
+import 'screens/share_screen.dart';
 import 'screens/shell.dart';
 import 'screens/users_screen.dart';
 
@@ -32,9 +35,11 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   usePathUrlStrategy();
   await AuthState.instance.init();
+  // Fresh company list, masters and notifications whenever the logged-in user changes.
   void onAuth() {
+    Companies.instance.reset();
     if (AuthState.instance.loggedIn) {
-      Masters.instance.ensure();
+      Companies.instance.ensure().catchError((_) {}).whenComplete(Masters.instance.reload);
       Notifications.instance.start();
     } else {
       Notifications.instance.stop();
@@ -42,10 +47,11 @@ Future<void> main() async {
   }
 
   onAuth();
-  var wasLoggedIn = AuthState.instance.loggedIn;
+  String? lastUser = AuthState.instance.user?['id']?.toString();
   AuthState.instance.addListener(() {
-    if (AuthState.instance.loggedIn != wasLoggedIn) {
-      wasLoggedIn = AuthState.instance.loggedIn;
+    final now = AuthState.instance.user?['id']?.toString();
+    if (now != lastUser) {
+      lastUser = now;
       onAuth();
     }
   });
@@ -55,6 +61,7 @@ Future<void> main() async {
 final _router = GoRouter(
   refreshListenable: AuthState.instance,
   redirect: (context, state) {
+    if (state.matchedLocation.startsWith('/share/')) return null; // public invoice page
     final loggedIn = AuthState.instance.loggedIn;
     final atLogin = state.matchedLocation == '/login';
     if (!loggedIn && !atLogin) return '/login';
@@ -63,6 +70,7 @@ final _router = GoRouter(
   },
   routes: [
     GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
+    GoRoute(path: '/share/:token', builder: (_, s) => ShareScreen(token: s.pathParameters['token']!)),
     ShellRoute(
       builder: (context, state, child) => AppShell(location: state.uri.path, child: child),
       routes: [
@@ -122,9 +130,10 @@ final _router = GoRouter(
         GoRoute(path: '/payments', builder: (_, _) => const PaymentsScreen()),
         GoRoute(path: '/expenses', builder: (_, _) => const ExpensesScreen()),
         GoRoute(path: '/masters', builder: (_, _) => const MastersScreen()),
+        GoRoute(path: '/export', builder: (_, s) => ExportScreen(initialType: s.uri.queryParameters['type'])),
         GoRoute(path: '/reports', builder: (_, _) => const ReportsScreen()),
         GoRoute(path: '/settings', builder: (_, _) => const SettingsScreen()),
-        GoRoute(path: '/users', builder: (_, _) => const UsersScreen()),
+        GoRoute(path: '/users', builder: (_, s) => UsersScreen(company: s.uri.queryParameters['company'])),
         GoRoute(path: '/more', builder: (_, _) => const MoreScreen()),
       ],
     ),

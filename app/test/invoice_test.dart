@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gst_billing/core/export.dart';
 import 'package:gst_billing/core/format.dart';
 import 'package:gst_billing/core/gst.dart';
 import 'package:gst_billing/pdf/invoice_pdf.dart';
@@ -87,6 +88,45 @@ void main() {
     expect(qtyStr(31377.0), '31377');
     expect(invoiceFileName(referenceInvoice), 'GUJARAT_MILK_PRODUCTS_LIMITED_Sales_Invoice_290.pdf');
     expect(waPhone('98765 43210'), '919876543210');
+  });
+
+  test('sales CSV export matches the reference report exactly', () async {
+    final ref = File(r'C:\Users\Lenovo\Downloads\rai_ice_depot_invoice_report.csv');
+    if (!ref.existsSync()) return; // reference only on the developer machine
+    final refText = ref.readAsStringSync();
+    // rebuild the same report from the reference rows
+    final lines = refText.split('\n');
+    final headerIdx = lines.indexWhere((l) => l.startsWith('Invoice No,'));
+    final rows = <List<Object?>>[];
+    for (final l in lines.skip(headerIdx + 1).where((l) => l.isNotEmpty)) {
+      final p = l.split(',');
+      rows.add([p[0], p[1], p[2], double.parse(p[3]), double.parse(p[4]), p[5], p[6], p[7], p[8], p[9]]);
+    }
+    final report = ExportReport({
+      'type': 'sales',
+      'title': 'Sales Summary Report',
+      'companyName': 'RAI ICE DEPOT',
+      'phone': '9920555557',
+      'from': '2026-10-01',
+      'to': '2026-10-31',
+      'totalLabel': 'Total Sales',
+      'total': 63118,
+      'columns': [
+        for (final c in ['Invoice No', 'Invoice Date', 'Contact Name', 'Amount', 'Remaining Amount', 'Invoice Status', 'Due Date', 'Invoice Link', 'Payment Type', 'Party Category'])
+          {'label': c, 'type': c.contains('Amount') ? 'number' : 'text'},
+      ],
+      'rows': rows,
+    });
+    expect(utf8.decode(Exporter.csv([report])), refText);
+    expect(Exporter.pyNum(3528), '3528.0');
+    expect(Exporter.pyNum(92562.15), '92562.15');
+    expect(Exporter.pyNum(3528.5), '3528.5');
+
+    final xlsx = Exporter.xlsx([report]);
+    File('build/test_export.xlsx').writeAsBytesSync(xlsx);
+    final pdf = await Exporter.pdf([report]);
+    File('build/test_export.pdf').writeAsBytesSync(pdf);
+    expect(String.fromCharCodes(xlsx.sublist(0, 2)), 'PK');
   });
 
   test('builds the invoice PDF', () async {

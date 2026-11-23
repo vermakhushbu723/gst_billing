@@ -2,7 +2,7 @@ import { Router } from 'express';
 import mongoose from 'mongoose';
 import { Expense } from '../models/Expense.js';
 import { Company } from '../models/Company.js';
-import { HttpError } from '../middleware/auth.js';
+import { HttpError, assertOwn } from '../middleware/auth.js';
 import { round2 } from '../utils/gst.js';
 import { money, notify } from '../utils/notify.js';
 
@@ -51,8 +51,7 @@ router.post('/', async (req, res) => {
 });
 
 router.put('/:id', async (req, res) => {
-  const e = await Expense.findById(req.params.id);
-  if (!e) throw new HttpError(404, 'Expense not found');
+  const e = assertOwn(req, await Expense.findById(req.params.id));
   apply(e, req.body || {});
   await validate(e);
   await e.save();
@@ -60,6 +59,7 @@ router.put('/:id', async (req, res) => {
 });
 
 router.delete('/:id', async (req, res) => {
+  assertOwn(req, await Expense.findById(req.params.id).select('company').lean());
   await Expense.findByIdAndDelete(req.params.id);
   res.json({ ok: true });
 });

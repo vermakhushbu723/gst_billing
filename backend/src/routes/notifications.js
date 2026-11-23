@@ -55,10 +55,11 @@ router.get('/', async (req, res) => {
   await scanAlerts().catch((e) => console.error('alert scan failed', e.message));
   const me = req.user._id;
   const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 40));
-  const filter = req.query.unread === '1' ? { readBy: { $ne: me } } : {};
+  const scope = req.scope ? { company: new mongoose.Types.ObjectId(req.scope) } : {};
+  const filter = { ...scope, ...(req.query.unread === '1' ? { readBy: { $ne: me } } : {}) };
   const [items, unread] = await Promise.all([
     Notification.find(filter).sort({ createdAt: -1 }).limit(limit).lean(),
-    Notification.countDocuments({ readBy: { $ne: me } }),
+    Notification.countDocuments({ ...scope, readBy: { $ne: me } }),
   ]);
   res.json({
     unread,
@@ -68,11 +69,13 @@ router.get('/', async (req, res) => {
 
 router.get('/count', async (req, res) => {
   await scanAlerts().catch(() => {});
-  res.json({ unread: await Notification.countDocuments({ readBy: { $ne: req.user._id } }) });
+  const scope = req.scope ? { company: new mongoose.Types.ObjectId(req.scope) } : {};
+  res.json({ unread: await Notification.countDocuments({ ...scope, readBy: { $ne: req.user._id } }) });
 });
 
 router.post('/read-all', async (req, res) => {
-  await Notification.updateMany({ readBy: { $ne: req.user._id } }, { $addToSet: { readBy: req.user._id } });
+  const scope = req.scope ? { company: new mongoose.Types.ObjectId(req.scope) } : {};
+  await Notification.updateMany({ ...scope, readBy: { $ne: req.user._id } }, { $addToSet: { readBy: req.user._id } });
   res.json({ ok: true });
 });
 

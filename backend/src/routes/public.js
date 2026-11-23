@@ -2,6 +2,7 @@ import { Router } from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
 import { Invoice } from '../models/Invoice.js';
+import { Company } from '../models/Company.js';
 import { config } from '../config.js';
 import { STATES } from '../utils/states.js';
 
@@ -24,6 +25,21 @@ router.get('/pdf/:file', async (req, res) => {
   res.setHeader('Content-Disposition', `inline; filename="${party}_${word}_${no}.pdf"`);
   res.setHeader('Cache-Control', 'no-store');
   fs.createReadStream(file).pipe(res);
+});
+
+// Public invoice page (/share/<token> in the web app): the document plus the
+// company's logo and signature, so the browser can draw the same PDF. The token
+// is random and unguessable; nothing else about the business is exposed.
+router.get('/invoice/:token', async (req, res) => {
+  const token = String(req.params.token);
+  if (!/^[a-f0-9]{36}$/.test(token)) return res.status(404).json({ message: 'Not found' });
+  const inv = await Invoice.findOne({ shareToken: token })
+    .select('-createdBy -payments.note -shareToken')
+    .lean();
+  if (!inv) return res.status(404).json({ message: 'This invoice link is not valid' });
+  const company = await Company.findById(inv.company).select('+logo +signature color name').lean();
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ invoice: inv, company: { _id: company?._id, name: company?.name, color: company?.color, logo: company?.logo || '', signature: company?.signature || '' } });
 });
 
 export default router;

@@ -46,13 +46,16 @@ class MoreScreen extends StatelessWidget {
         ]),
         group('MONEY', [
           tile(Icons.account_balance_wallet_outlined, 'Expenses', 'Kharcha with categories', '/expenses'),
-          tile(Icons.bar_chart, 'Reports', 'GST, P&L, customer & item-wise, export', '/reports'),
+          tile(Icons.bar_chart, 'Reports', 'GST, P&L, customer & item-wise', '/reports'),
+          tile(Icons.download_outlined, 'Export / Download', 'All data to Excel, CSV or PDF', '/export'),
         ]),
         group('MASTERS', [
           tile(Icons.inventory_2_outlined, 'Products', 'Items, rates, GST, HSN', '/products'),
-          tile(Icons.business, 'Companies', 'Your 5 firms — logo, GSTIN, bank, numbering', '/companies'),
+          AuthState.instance.isCompanyLogin
+              ? tile(Icons.business, 'My Company', 'Logo, GSTIN, bank, numbering', '/companies')
+              : tile(Icons.business, 'Companies', 'All firms — details, numbering and logins', '/companies'),
           tile(Icons.tune, 'Units, GST & Lists', 'Units, GST rates, payment modes, expense categories', '/masters'),
-          if (AuthState.instance.isAdmin) tile(Icons.group_outlined, 'Users & Staff', 'Who can login', '/users'),
+          if (AuthState.instance.isAdmin) tile(Icons.group_outlined, 'Users & Logins', 'Who can login', '/users'),
           tile(Icons.settings_outlined, 'Settings', 'Profile and password', '/settings'),
         ]),
         const SizedBox(height: 12),

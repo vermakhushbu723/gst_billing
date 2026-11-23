@@ -6,6 +6,8 @@ import '../core/api.dart';
 import '../core/format.dart';
 import '../core/gst.dart';
 import '../widgets/common.dart';
+import '../widgets/company_selector.dart';
+import '../core/companies.dart';
 
 class ProductFormScreen extends StatefulWidget {
   const ProductFormScreen({super.key, this.id});
@@ -22,12 +24,16 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
   final _rate = TextEditingController();
   String _unit = 'KGS';
   double _gst = 5;
+  String? _company;
   bool _loading = false, _saving = false;
   String? _error;
 
   @override
   void initState() {
     super.initState();
+    Companies.instance.ensure().then((_) {
+      if (mounted && widget.id == null) setState(() => _company = Companies.instance.defaultId);
+    });
     if (widget.id != null) _load();
   }
 
@@ -53,6 +59,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
       _rate.text = '${p['rate'] ?? ''}';
       _unit = '${p['unit'] ?? 'KGS'}';
       _gst = toD(p['gstRate']);
+      _company = p['company'] as String?;
     } catch (e) {
       _error = '$e';
     }
@@ -63,6 +70,7 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
     if (!_form.currentState!.validate()) return;
     setState(() => _saving = true);
     final body = {
+      'company': _company,
       'name': _name.text.trim(),
       'description': _desc.text.trim(),
       'hsn': _hsn.text.trim(),
@@ -98,6 +106,8 @@ class _ProductFormScreenState extends State<ProductFormScreen> {
                       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                         SectionCard(
                           child: Column(children: [
+                            CompanyField(value: _company, enabled: widget.id == null, onChanged: (v) => setState(() => _company = v)),
+                            const SizedBox(height: 12),
                             TextFormField(
                               controller: _name,
                               textCapitalization: TextCapitalization.characters,

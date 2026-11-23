@@ -5,6 +5,8 @@ import '../core/brand.dart';
 import '../core/format.dart';
 import '../core/masters.dart';
 import '../widgets/common.dart';
+import '../widgets/company_selector.dart';
+import '../core/companies.dart';
 import '../widgets/top_actions.dart';
 
 /// Editable lists used across the app: units, GST rates, payment modes, expense categories.
@@ -30,6 +32,7 @@ class _MastersScreenState extends State<MastersScreen> {
       _error = null;
     });
     try {
+      await Companies.instance.ensure();
       await Masters.instance.load();
     } catch (e) {
       _error = '$e';
@@ -115,6 +118,16 @@ class _MastersScreenState extends State<MastersScreen> {
                   Constrained(
                     maxWidth: 860,
                     child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                      CompanySelector(onChanged: _load),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(4, 8, 4, 12),
+                        child: Text(
+                          Companies.instance.selected == 'all'
+                              ? 'Default lists — a new company starts with these.'
+                              : 'Lists for ${Companies.instance.nameOf(Companies.instance.selected)} only.',
+                          style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
+                        ),
+                      ),
                       if (!admin)
                         Padding(
                           padding: const EdgeInsets.only(bottom: 12),
@@ -124,6 +137,7 @@ class _MastersScreenState extends State<MastersScreen> {
                       section('gstRates', 'GST rates', 'Rates you can pick for products and invoice items.', Icons.percent, m.gstRates, (v) => pct(v), number: true),
                       section('paymentModes', 'Payment modes', 'Used when receiving payments and recording expenses.', Icons.payments_outlined, m.paymentModes, (v) => '$v'),
                       section('expenseCategories', 'Expense categories', 'Categories for the Expenses screen and P&L report.', Icons.category_outlined, m.expenseCategories, (v) => '$v'),
+                      section('partyCategories', 'Party categories', 'Customer types — shown in the customer form and the sales export.', Icons.label_outline, m.partyCategories, (v) => '$v'),
                     ]),
                   ),
                 ]),

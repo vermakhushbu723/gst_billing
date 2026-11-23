@@ -31,6 +31,25 @@ gst_billing/
 | Reports | Sales register, GST summary (net of credit notes), B2B/B2C, P&L, customer-wise, item-wise, credit notes, expenses; print + CSV |
 | Settings / Users | Profile, change password, admin manages staff logins |
 
+## Company logins
+
+- **Main admin** (a login with no company) sees and manages every company.
+- **Company login** (Companies → Logins, or Users & Logins with a company chosen) sees only that company: its invoices, quotations, challans, credit notes, customers, products, payments, expenses, reports, notifications, masters and logins.
+  - **Company Admin** can also edit the company details and add staff logins for the company.
+  - **Staff** can do the day-to-day billing.
+- The server enforces this. For a company login, the company is set on every request, and opening another company's record returns 404.
+
+## Export / Download
+
+Open it from Dashboard → **Export / Download** (also in the sidebar and the profile menu).
+
+- Choose the report, the company and the dates (or all dates).
+- Download as **Excel (.xlsx)**, **CSV** or **PDF**.
+- The **Sales Summary** CSV has exactly the same layout as `rai_ice_depot_invoice_report.csv`:
+  - a header block, then the columns `Invoice No, Invoice Date, Contact Name, Amount, Remaining Amount, Invoice Status, Due Date, Invoice Link, Payment Type, Party Category`;
+  - Invoice Link is a public page (`/share/<token>`) where the customer can view, print and download the invoice without logging in.
+- **All data** exports every report (one sheet each in Excel).
+
 ## WhatsApp
 
 On the invoice screen, **WhatsApp** offers two ways:

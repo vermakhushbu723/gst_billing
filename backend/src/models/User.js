@@ -7,6 +7,8 @@ const userSchema = new mongoose.Schema(
     phone: { type: String, trim: true, default: '' },
     passwordHash: { type: String, required: true, select: false },
     role: { type: String, enum: ['admin', 'staff'], default: 'staff' },
+    // Empty = main (super) login for all companies. Set = company login, sees only this company.
+    company: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', default: null },
     active: { type: Boolean, default: true },
   },
   { timestamps: true },

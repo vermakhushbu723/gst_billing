@@ -1,12 +1,14 @@
 import { Router } from 'express';
 import { Customer } from '../models/Customer.js';
 import { Invoice } from '../models/Invoice.js';
-import { HttpError } from '../middleware/auth.js';
+import { HttpError, assertOwn } from '../middleware/auth.js';
+import { Company } from '../models/Company.js';
+import mongoose from 'mongoose';
 import { stateName } from '../utils/states.js';
 import { round2 } from '../utils/gst.js';
 
 const router = Router();
-const FIELDS = ['name', 'phone', 'email', 'gstin', 'pan', 'billingAddress', 'shippingName', 'shippingAddress', 'sameAsBilling', 'stateCode', 'openingBalance', 'active'];
+const FIELDS = ['category', 'name', 'phone', 'email', 'gstin', 'pan', 'billingAddress', 'shippingName', 'shippingAddress', 'sameAsBilling', 'stateCode', 'openingBalance', 'active'];
 
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -19,6 +21,8 @@ function apply(doc, body) {
 router.get('/', async (req, res) => {
   const q = String(req.query.q || '').trim();
   const filter = { active: true };
+  const company = req.query.company;
+  if (company && company !== 'all' && mongoose.isValidObjectId(company)) filter.company = company;
   if (q) filter.$or = [{ name: new RegExp(escapeRe(q), 'i') }, { phone: new RegExp(escapeRe(q), 'i') }, { gstin: new RegExp(escapeRe(q), 'i') }];
   const customers = await Customer.find(filter).sort({ name: 1 }).lean();
   // Outstanding balance per customer
@@ -42,14 +46,12 @@ router.get('/', async (req, res) => {
 });
 
 router.get('/:id', async (req, res) => {
-  const c = await Customer.findById(req.params.id).lean();
-  if (!c) throw new HttpError(404, 'Customer not found');
+  const c = assertOwn(req, await Customer.findById(req.params.id).lean());
   res.json(c);
 });
 
 router.get('/:id/statement', async (req, res) => {
-  const c = await Customer.findById(req.params.id).lean();
-  if (!c) throw new HttpError(404, 'Customer not found');
+  const c = assertOwn(req, await Customer.findById(req.params.id).lean());
   const invoices = await Invoice.find({ customer: c._id })
     .select('docType invoiceNo invoicePrefix invoiceDate dueDate total receivedAmount balance status company companySnapshot.name billTo.name payments')
     .sort({ invoiceDate: -1, invoiceNo: -1 })
@@ -90,20 +92,23 @@ router.get('/:id/statement', async (req, res) => {
 
 router.post('/', async (req, res) => {
   const c = new Customer();
+  const company = req.body?.company;
+  if (!mongoose.isValidObjectId(company) || !(await Company.exists({ _id: company }))) throw new HttpError(400, 'Select the company for this customer');
+  c.company = company;
   apply(c, req.body || {});
   await c.save();
   res.status(201).json(c);
 });
 
 router.put('/:id', async (req, res) => {
-  const c = await Customer.findById(req.params.id);
-  if (!c) throw new HttpError(404, 'Customer not found');
+  const c = assertOwn(req, await Customer.findById(req.params.id));
   apply(c, req.body || {});
   await c.save();
   res.json(c);
 });
 
 router.delete('/:id', async (req, res) => {
+  assertOwn(req, await Customer.findById(req.params.id).select('company').lean());
   if (await Invoice.exists({ customer: req.params.id })) {
     await Customer.findByIdAndUpdate(req.params.id, { active: false });
     return res.json({ ok: true, deactivated: true });

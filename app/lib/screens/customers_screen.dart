@@ -6,6 +6,8 @@ import 'package:go_router/go_router.dart';
 import '../core/api.dart';
 import '../core/format.dart';
 import '../widgets/common.dart';
+import '../widgets/company_selector.dart';
+import '../core/companies.dart';
 import '../widgets/top_actions.dart';
 
 class CustomersScreen extends StatefulWidget {
@@ -35,7 +37,8 @@ class _CustomersScreenState extends State<CustomersScreen> {
   Future<void> _load() async {
     setState(() => _error = null);
     try {
-      final r = await Api.instance.get('/customers', {'q': _q});
+      await Companies.instance.ensure();
+      final r = await Api.instance.get('/customers', {'q': _q, 'company': Companies.instance.selected});
       if (mounted) setState(() => _items = List<Map>.from(r));
     } catch (e) {
       if (mounted) setState(() => _error = '$e');
@@ -61,7 +64,11 @@ class _CustomersScreenState extends State<CustomersScreen> {
         maxWidth: 1000,
         child: Column(children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: CompanySelector(onChanged: _load),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
             child: TextField(
               decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Search name, mobile or GSTIN'),
               onChanged: (v) {
@@ -115,7 +122,7 @@ class _CustomersScreenState extends State<CustomersScreen> {
               leading: CircleAvatar(child: Text('${c['name']}'.isEmpty ? '?' : '${c['name']}'[0].toUpperCase())),
               title: Text('${c['name']}', style: const TextStyle(fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
               subtitle: Text(
-                [c['gstin'], c['phone'], c['state']].where((e) => '${e ?? ''}'.isNotEmpty).join(' • '),
+                [c['gstin'], c['phone'], c['state'], if (Companies.instance.selected == 'all' && !Companies.instance.locked) Companies.instance.nameOf('${c['company']}')].where((e) => '${e ?? ''}'.isNotEmpty).join(' • '),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),

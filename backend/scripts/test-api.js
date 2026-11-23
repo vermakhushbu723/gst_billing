@@ -63,7 +63,8 @@ try {
   assert.equal(dup.status, 409);
 
   // Other state customer -> IGST
-  const gj = await api('POST', '/customers', { name: 'Test Gujarat Pvt Ltd', stateCode: '24', gstin: '24ABCDE1234F1Z5', phone: '9999999999' });
+  assert.equal((await api('POST', '/customers', { name: 'No company' })).status, 400);
+  const gj = await api('POST', '/customers', { company: om._id, name: 'Test Gujarat Pvt Ltd', stateCode: '24', gstin: '24ABCDE1234F1Z5', phone: '9999999999' });
   assert.equal(gj.data.pan, 'ABCDE1234F');
   const inter = await api('POST', '/invoices', { company: om._id, customer: gj.data._id, invoiceDate: '2026-10-05', items: [{ name: 'Ice', qty: 100, rate: 10, gstRate: 18 }], receivedAmount: 500 });
   assert.equal(inter.status, 201);
@@ -196,6 +197,82 @@ try {
   token = (await api('POST', '/auth/login', { email: 'staff@x.com', password: 'staff123' })).data.token;
   assert.equal((await api('POST', '/companies', { name: 'X' })).status, 403);
   assert.equal((await api('PUT', '/settings', { units: ['X'] })).status, 403);
+  token = adminToken;
+
+  // ---- Export ----
+  const exp = await api('GET', `/export/sales?company=${om._id}&from=2025-01-01&to=2026-12-31`);
+  assert.equal(exp.status, 200, JSON.stringify(exp.data));
+  assert.equal(exp.data.companyName, 'OM ICE INDUSTRIES');
+  assert.equal(exp.data.columns.map((c) => c.label).join(','), 'Invoice No,Invoice Date,Contact Name,Amount,Remaining Amount,Invoice Status,Due Date,Invoice Link,Payment Type,Party Category');
+  const r290 = exp.data.rows.find((r) => r[0] === '290');
+  assert.ok(r290 && r290[1] === '01/10/2026' && r290[7].includes('/share/'));
+  for (const t of ['quotations', 'challans', 'credit_notes', 'payments', 'expenses', 'customers', 'products', 'customer_sales', 'item_sales', 'gst']) {
+    const r = await api('GET', `/export/${t}`);
+    assert.equal(r.status, 200, `${t}: ${JSON.stringify(r.data)}`);
+    assert.ok(Array.isArray(r.data.rows) && r.data.columns.length > 1, t);
+  }
+  assert.equal((await api('GET', '/export/nope')).status, 400);
+
+  // ---- Public share page ----
+  const shareTok = r290[7].split('/share/')[1];
+  const pub2 = await (await fetch(`${base}/public/invoice/${shareTok}`)).json();
+  assert.equal(pub2.invoice.invoiceNo, 290);
+  assert.equal(pub2.company.name, 'OM ICE INDUSTRIES');
+  assert.equal(pub2.invoice.shareToken, undefined);
+
+  // ---- Company logins: each company sees only its own data ----
+  const c2 = companies[1];
+  const c2admin = await api('POST', '/users', { name: 'C2 Admin', email: 'c2@x.com', password: 'c2pass1', role: 'admin', loginCompany: c2._id });
+  assert.equal(c2admin.status, 201, JSON.stringify(c2admin.data));
+  assert.equal(c2admin.data.company, c2._id);
+  assert.equal(c2admin.data.superAdmin, false);
+  const c2login = await api('POST', '/auth/login', { email: 'c2@x.com', password: 'c2pass1' });
+  assert.equal(c2login.data.user.companyName, companies[1].name);
+  token = c2login.data.token;
+  const myCompanies = (await api('GET', '/companies')).data;
+  assert.equal(myCompanies.length, 1);
+  assert.equal(myCompanies[0]._id, c2._id);
+  assert.equal((await api('GET', `/companies/${om._id}`)).status, 404);
+  assert.equal((await api('PUT', `/companies/${om._id}`, { name: 'HACK' })).status, 404);
+  assert.equal((await api('POST', '/companies', { name: 'X' })).status, 403);
+  assert.equal((await api('GET', '/customers')).data.length, 0);
+  assert.equal((await api('GET', '/products')).data.length, 0);
+  assert.equal((await api('GET', '/invoices')).data.total, 0);
+  assert.equal((await api('GET', `/invoices?company=${om._id}`)).data.total, 0, 'company param is ignored for company logins');
+  assert.equal((await api('GET', `/invoices/${inv._id}`)).status, 404);
+  assert.equal((await api('POST', `/invoices/${inv._id}/payments`, { amount: 1 })).status, 404);
+  assert.equal((await api('GET', `/customers/${customer._id}/statement`)).status, 404);
+  assert.equal((await api('GET', '/payments')).data.items.length, 0);
+  assert.equal((await api('GET', '/expenses')).data.items.length, 0);
+  assert.equal((await api('GET', '/reports/sales')).data.totals.count, 0);
+  assert.equal((await api('GET', '/export/sales')).data.rows.length, 0);
+  assert.equal((await api('GET', '/export/sales')).data.companyName, companies[1].name);
+  assert.equal((await api('GET', '/notifications')).data.items.filter((n) => n.company && n.company !== c2._id).length, 0);
+  // their own data works and lands in their company even if another is asked for
+  const myCust = await api('POST', '/customers', { company: om._id, name: 'C2 Customer', stateCode: '27' });
+  assert.equal(myCust.status, 201);
+  assert.equal(myCust.data.company, c2._id);
+  const myProd = await api('POST', '/products', { name: 'C2 Ice', rate: 5, gstRate: 5 });
+  assert.equal(myProd.data.company, c2._id);
+  const myInv = await api('POST', '/invoices', { company: om._id, customer: myCust.data._id, invoiceDate: '2026-11-01', items: [{ name: 'C2 Ice', qty: 10, rate: 5, gstRate: 5 }] });
+  assert.equal(myInv.status, 201, JSON.stringify(myInv.data));
+  assert.equal(myInv.data.company, c2._id);
+  assert.equal(myInv.data.invoiceNo, 1);
+  assert.equal((await api('POST', '/invoices', { customer: customer._id, invoiceDate: '2026-11-01', items: [{ name: 'X', qty: 1, rate: 1, gstRate: 0 }] })).status, 400, 'other company customer');
+  assert.equal((await api('GET', '/customers')).data.length, 1);
+  const myUsers = (await api('GET', '/users')).data;
+  assert.ok(myUsers.every((u) => u.company === c2._id));
+  const myStaff = await api('POST', '/users', { name: 'C2 Staff', email: 'c2s@x.com', password: 'c2staff', loginCompany: null });
+  assert.equal(myStaff.data.company, c2._id, 'company admin can only add logins to own company');
+  const superUser = (await api('GET', '/users')).data.find((u) => u.superAdmin);
+  assert.equal(superUser, undefined);
+  const mySettings = await api('PUT', '/settings', { units: ['BLOCK'] });
+  assert.deepEqual(mySettings.data.units, ['BLOCK']);
+  token = adminToken;
+  assert.notDeepEqual((await api('GET', `/settings?company=${om._id}`)).data.units, ['BLOCK'], 'masters are per company');
+  // main admin still sees everything
+  assert.ok((await api('GET', '/invoices?type=all&limit=200')).data.total >= 5);
+  assert.equal((await api('GET', `/invoices?company=${c2._id}`)).data.total, 1);
 
   console.log('All API tests passed');
 } finally {

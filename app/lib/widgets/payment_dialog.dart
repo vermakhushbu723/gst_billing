@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../core/api.dart';
+import '../core/companies.dart';
 import '../core/format.dart';
 import '../core/gst.dart' show paymentModes;
 import 'common.dart';
@@ -14,7 +15,7 @@ Future<bool> receivePayment(BuildContext context, {Map<String, dynamic>? custome
     cust = await pickFromList(
       context,
       title: 'Payment from which customer?',
-      load: (q) async => List<Map<String, dynamic>>.from((await Api.instance.get('/customers', {'q': q}) as List).map((e) => Map<String, dynamic>.from(e)))
+      load: (q) async => List<Map<String, dynamic>>.from((await Api.instance.get('/customers', {'q': q, 'company': Companies.instance.selected}) as List).map((e) => Map<String, dynamic>.from(e)))
           .where((c) => toD(c['balance']) > 0)
           .toList(),
       label: (c) => '${c['name']}',

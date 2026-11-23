@@ -5,6 +5,9 @@ import 'package:go_router/go_router.dart';
 import '../core/api.dart';
 import '../core/states.dart';
 import '../widgets/common.dart';
+import '../widgets/company_selector.dart';
+import '../core/companies.dart';
+import '../core/masters.dart';
 
 class CustomerFormScreen extends StatefulWidget {
   const CustomerFormScreen({super.key, this.id});
@@ -26,12 +29,17 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
   final _opening = TextEditingController();
   String _stateCode = '27';
   bool _same = true;
+  String? _company;
+  String _category = '';
   bool _loading = false, _saving = false;
   String? _error;
 
   @override
   void initState() {
     super.initState();
+    Companies.instance.ensure().then((_) {
+      if (mounted && widget.id == null) setState(() => _company = Companies.instance.defaultId);
+    });
     if (widget.id != null) _load();
   }
 
@@ -61,6 +69,8 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
       _opening.text = (c['openingBalance'] ?? 0) == 0 ? '' : '${c['openingBalance']}';
       _stateCode = '${c['stateCode'] ?? '27'}';
       _same = c['sameAsBilling'] != false;
+      _company = c['company'] as String?;
+      _category = '${c['category'] ?? ''}';
     } catch (e) {
       _error = '$e';
     }
@@ -79,6 +89,8 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
     if (!_form.currentState!.validate()) return;
     setState(() => _saving = true);
     final body = {
+      'company': _company,
+      'category': _category,
       'name': _name.text.trim(),
       'phone': _phone.text.trim(),
       'email': _email.text.trim(),
@@ -126,6 +138,8 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
                         SectionCard(
                           title: 'Customer details',
                           child: Column(children: [
+                            CompanyField(value: _company, enabled: widget.id == null, onChanged: (v) => setState(() => _company = v)),
+                            const SizedBox(height: 12),
                             TextFormField(
                               controller: _name,
                               textCapitalization: TextCapitalization.characters,
@@ -146,6 +160,20 @@ class _CustomerFormScreenState extends State<CustomerFormScreen> {
                               ),
                             ),
                           ]),
+                        ),
+                        SectionCard(
+                          title: 'Party category',
+                          child: DropdownButtonFormField<String>(
+                            key: ValueKey('cat-$_category'),
+                            initialValue: _category.isEmpty ? null : _category,
+                            isExpanded: true,
+                            decoration: const InputDecoration(labelText: 'Category (optional)', helperText: 'Edit the list in Units, GST & Lists'),
+                            items: [
+                              for (final c in {...Masters.instance.partyCategories, if (_category.isNotEmpty) _category})
+                                DropdownMenuItem(value: c, child: Text(c)),
+                            ],
+                            onChanged: (v) => setState(() => _category = v ?? ''),
+                          ),
                         ),
                         SectionCard(
                           title: 'GST details',

@@ -52,7 +52,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
           if (MediaQuery.sizeOf(context).width < 900) ...[const BrandLogo(height: 30), const SizedBox(width: 10)],
           Flexible(child: Text('Hello, $name', overflow: TextOverflow.ellipsis)),
         ]),
-        actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh), tooltip: 'Refresh'),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 4),
+            child: OutlinedButton.icon(
+              onPressed: () => context.go('/export'),
+              icon: const Icon(Icons.download_outlined, size: 18),
+              label: Text(MediaQuery.sizeOf(context).width < 600 ? 'Export' : 'Export / Download'),
+              style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
+            ),
+          ),IconButton(onPressed: _load, icon: const Icon(Icons.refresh), tooltip: 'Refresh'),
           ...topActions(),
         ],
       ),
@@ -122,6 +131,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               _quick(Icons.person_add_alt, 'Add Customer', () => _open('/customers/new')),
               _quick(Icons.add_box_outlined, 'Add Product', () => _open('/products/new')),
               _quick(Icons.bar_chart, 'Reports', () => context.go('/reports')),
+              _quick(Icons.download_outlined, 'Export / Download', () => context.go('/export')),
             ]),
             const SizedBox(height: 16),
             SectionCard(title: 'Sales vs Expenses — last 6 months', child: _Bars(months: months)),
