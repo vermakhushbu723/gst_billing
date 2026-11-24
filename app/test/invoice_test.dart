@@ -149,7 +149,12 @@ void main() {
       'balance': 92562.15,
     };
     expect(invoiceFileName(bill), 'GUJARAT_MILK_PRODUCTS_LIMITED_Bill_B-1.pdf');
-    final bytes = await InvoicePdf.build(bill, {});
+    String img(String path) {
+      final f = File(path);
+      return f.existsSync() ? 'data:image/png;base64,${base64Encode(f.readAsBytesSync())}' : '';
+    }
+
+    final bytes = await InvoicePdf.build(bill, {'logo': img('build/ref_img0.png'), 'signature': img('build/ref_img1.png')});
     File('build/test_bill.pdf').writeAsBytesSync(bytes);
     expect(String.fromCharCodes(bytes.sublist(0, 4)), '%PDF');
   });
