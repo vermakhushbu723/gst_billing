@@ -47,8 +47,8 @@ const exportTypes = <(String, String)>[
 ];
 
 class Exporter {
-  static Future<ExportReport> fetch(String type, {required String company, String from = '', String to = ''}) async {
-    final r = await Api.instance.get('/export/$type', {'company': company, 'from': from, 'to': to});
+  static Future<ExportReport> fetch(String type, {required String company, String from = '', String to = '', String? gst}) async {
+    final r = await Api.instance.get('/export/$type', {'company': company, 'from': from, 'to': to, 'gst': gst});
     return ExportReport(Map<String, dynamic>.from(r));
   }
 

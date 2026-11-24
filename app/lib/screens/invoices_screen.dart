@@ -10,6 +10,7 @@ import '../core/format.dart';
 import '../widgets/common.dart';
 import '../widgets/company_selector.dart';
 import '../widgets/top_actions.dart';
+import '../core/tax_mode.dart';
 
 class InvoicesScreen extends StatefulWidget {
   const InvoicesScreen({super.key, this.docType = DocType.invoice});
@@ -23,7 +24,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
   int _page = 1, _pages = 1, _total = 0;
   double _sumTotal = 0, _sumBalance = 0;
   DocType get _type => widget.docType;
-  String get _newPath => '/invoices/new${_type.isInvoice ? '' : '?type=${_type.key}'}';
+  String get _newPath => '/invoices/new?type=${_type.key}&gst=${TaxMode.instance.gst ? 1 : 0}';
   bool _loading = false;
   String? _error;
   String _status = 'all';
@@ -34,11 +35,13 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
   @override
   void initState() {
     super.initState();
+    TaxMode.instance.addListener(_reload);
     _reload();
   }
 
   @override
   void dispose() {
+    TaxMode.instance.removeListener(_reload);
     _debounce?.cancel();
     super.dispose();
   }
@@ -59,6 +62,7 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
       final r = await Api.instance.get('/invoices', {
         'company': Companies.instance.selected,
         'type': _type.key,
+        'gst': TaxMode.instance.param,
         'status': _status,
         'q': _q,
         'from': _from,
@@ -95,11 +99,11 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('${_type.plural}${_total > 0 ? ' ($_total)' : ''}'), actions: topActions()),
+      appBar: AppBar(title: Text('${_type.pluralFor(TaxMode.instance.gst)}${_total > 0 ? ' ($_total)' : ''}'), actions: topActions()),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _open(_newPath),
         icon: const Icon(Icons.add),
-        label: Text('New ${_type.label}'),
+        label: Text('New ${_type.labelFor(TaxMode.instance.gst)}'),
       ),
       body: Constrained(
         maxWidth: 1000,
@@ -191,8 +195,8 @@ class _InvoicesScreenState extends State<InvoicesScreen> {
     if (_items.isEmpty) {
       return EmptyView(
         icon: Icons.receipt_long,
-        text: 'No ${_type.plural.toLowerCase()} found',
-        action: FilledButton.icon(onPressed: () => _open(_newPath), icon: const Icon(Icons.add), label: Text('Create ${_type.label.toLowerCase()}')),
+        text: 'No ${_type.pluralFor(TaxMode.instance.gst).toLowerCase()} found',
+        action: FilledButton.icon(onPressed: () => _open(_newPath), icon: const Icon(Icons.add), label: Text('Create ${_type.labelFor(TaxMode.instance.gst).toLowerCase()}')),
       );
     }
     return RefreshIndicator(

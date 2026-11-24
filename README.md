@@ -31,6 +31,26 @@ gst_billing/
 | Reports | Sales register, GST summary (net of credit notes), B2B/B2C, P&L, customer-wise, item-wise, credit notes, expenses; print + CSV |
 | Settings / Users | Profile, change password, admin manages staff logins |
 
+## Two flows: With GST / Without GST
+
+Use the **With GST | Without GST** switch in the top bar of every main screen. The whole app follows it:
+
+- The dashboard, lists, new documents, payments, reports and export all switch.
+- Names change with the flow:
+
+  | With GST | Without GST |
+  |---|---|
+  | Invoice | Bill |
+  | Quotation | Estimate |
+  | Credit Note | Sales Return |
+  | Delivery Challan | Delivery Challan |
+
+- **Separate numbering** per company. Bills `B-1, B-2…`, estimates `EST-`, sales returns `SR-`, challans `NDC-`. These start from Companies → Numbering, so the GST invoice series never gets gaps.
+- **Bill PDF:** the same layout as the tax invoice, without the TAX column, GSTIN, PAN, place of supply or CGST/SGST rows.
+- **Company not GST registered:** switch "GST registered" off in the company form. That company can then make bills without GST only, and the server enforces it.
+- **Reports and Export** have a Bill type filter: Both / With GST / Without GST. GST summaries always use GST invoices only.
+- Customer balances and ledgers combine both flows. Each entry is tagged.
+
 ## Company logins
 
 - **Main admin** (a login with no company) sees and manages every company.

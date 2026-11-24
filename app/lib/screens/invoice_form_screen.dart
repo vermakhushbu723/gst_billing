@@ -10,6 +10,7 @@ import '../core/gst.dart';
 import '../core/states.dart';
 import '../widgets/common.dart';
 import '../core/brand.dart';
+import '../core/tax_mode.dart';
 
 class _Line {
   _Line({Map? from}) {
@@ -55,8 +56,11 @@ class _Line {
 }
 
 class InvoiceFormScreen extends StatefulWidget {
-  const InvoiceFormScreen({super.key, this.invoiceId, this.customerId, this.copyFromId, this.docType = DocType.invoice});
+  const InvoiceFormScreen({super.key, this.invoiceId, this.customerId, this.copyFromId, this.docType = DocType.invoice, this.gst});
   final DocType docType;
+
+  /// Flow of a new document; null = the app's current flow.
+  final bool? gst;
   final String? invoiceId;
   final String? customerId;
   final String? copyFromId;
@@ -70,6 +74,7 @@ class _InvoiceFormScreenState extends State<InvoiceFormScreen> {
   String? _error;
 
   late DocType _type = widget.docType;
+  late bool _gst = widget.gst ?? TaxMode.instance.gst;
   String _prefix = '';
   final _refInvoice = TextEditingController();
   String? _companyId;
@@ -117,6 +122,7 @@ class _InvoiceFormScreenState extends State<InvoiceFormScreen> {
         final inv = Map<String, dynamic>.from(await Api.instance.get('/invoices/${widget.invoiceId ?? widget.copyFromId}'));
         _companyId = inv['company'];
         _type = DocType.of(inv['docType']);
+        _gst = isGstDoc(inv);
         _refInvoice.text = '${inv['refInvoiceNo'] ?? ''}';
         _customer = Map<String, dynamic>.from(await Api.instance.get('/customers/${inv['customer']}'));
         _posCode = '${inv['placeOfSupplyCode'] ?? _customer!['stateCode']}';
@@ -166,7 +172,8 @@ class _InvoiceFormScreenState extends State<InvoiceFormScreen> {
 
   Future<void> _loadNextNumber() async {
     if (_companyId == null) return;
-    final r = await Api.instance.get('/invoices/next-number', {'company': _companyId, 'type': _type.key});
+    final r = await Api.instance.get('/invoices/next-number', {'company': _companyId, 'type': _type.key, 'gst': _gst ? 'gst' : 'nongst'});
+    _gst = r['gst'] != false; // not GST registered → always without GST
     _invoiceNo.text = '${r['invoiceNo']}';
     _prefix = '${r['prefix'] ?? ''}';
     _dueDays = (r['dueDays'] as num?)?.toInt() ?? 15;
@@ -182,7 +189,7 @@ class _InvoiceFormScreenState extends State<InvoiceFormScreen> {
   bool get _intra => (_company?['stateCode'] ?? '27') == _posCode;
 
   InvoiceCalc get _calc => calcInvoice(
-        [for (final l in _lines) (qty: l.qtyV, rate: l.rateV, gstRate: l.gstRate)],
+        [for (final l in _lines) (qty: l.qtyV, rate: l.rateV, gstRate: _gst ? l.gstRate : 0)],
         intraState: _intra,
       );
 
@@ -242,6 +249,7 @@ class _InvoiceFormScreenState extends State<InvoiceFormScreen> {
     }
     final body = <String, dynamic>{
       'docType': _type.key,
+      'gst': _gst,
       'refInvoiceNo': _refInvoice.text.trim(),
       'company': _companyId,
       'customer': _customer!['_id'],
@@ -264,7 +272,7 @@ class _InvoiceFormScreenState extends State<InvoiceFormScreen> {
           : await Api.instance.post('/invoices', body);
       Companies.instance.load();
       if (!mounted) return;
-      showSnack(context, _editing ? '${_type.label} updated' : '${_type.label} ${invNo(r)} saved');
+      showSnack(context, _editing ? '${_type.labelFor(_gst)} updated' : '${_type.labelFor(_gst)} ${invNo(r)} saved');
       if (_editing) {
         context.pop(true);
       } else {
@@ -281,7 +289,7 @@ class _InvoiceFormScreenState extends State<InvoiceFormScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('${_editing ? 'Edit' : 'New'} ${_type.label}'),
+        title: Text('${_editing ? 'Edit' : 'New'} ${_type.labelFor(_gst)}'),
         actions: [
           if (!_loading && _error == null)
             Padding(
@@ -313,8 +321,31 @@ class _InvoiceFormScreenState extends State<InvoiceFormScreen> {
           maxWidth: 980,
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             SectionCard(
-              title: '${_type.label} details',
+              title: '${_type.labelFor(_gst)} details',
               child: Column(children: [
+                if (!_editing)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: SegmentedButton<bool>(
+                      segments: [
+                        ButtonSegment(value: true, icon: const Icon(Icons.percent, size: 16), label: const Text('With GST'), enabled: _company?['gstRegistered'] != false),
+                        const ButtonSegment(value: false, icon: Icon(Icons.money_off, size: 16), label: Text('Without GST')),
+                      ],
+                      selected: {_gst},
+                      onSelectionChanged: (v) async {
+                        setState(() => _gst = v.first);
+                        try {
+                          await _loadNextNumber();
+                        } catch (_) {}
+                        if (mounted) setState(() {});
+                      },
+                    ),
+                  )
+                else
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Align(alignment: Alignment.centerLeft, child: Chip(label: Text(_gst ? 'With GST' : 'Without GST'))),
+                  ),
                 DropdownButtonFormField<String>(
                   initialValue: _companyId,
                   isExpanded: true,
@@ -344,7 +375,7 @@ class _InvoiceFormScreenState extends State<InvoiceFormScreen> {
                     keyboardType: TextInputType.number,
                     inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                     decoration: InputDecoration(
-                      labelText: '${_type.label} No.',
+                      labelText: '${_type.labelFor(_gst)} No.',
                       prefixText: _prefix,
                     ),
                   ),
@@ -392,7 +423,7 @@ class _InvoiceFormScreenState extends State<InvoiceFormScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
+                if (_gst) DropdownButtonFormField<String>(
                   key: ValueKey('pos$_posCode'),
                   initialValue: indianStates.any((s) => s.$1 == _posCode) ? _posCode : null,
                   isExpanded: true,
@@ -407,7 +438,7 @@ class _InvoiceFormScreenState extends State<InvoiceFormScreen> {
                   contentPadding: EdgeInsets.zero,
                   value: _customShip,
                   onChanged: (v) => setState(() => _customShip = v),
-                  title: const Text('Different ship-to address for this invoice'),
+                  title: const Text('Different ship-to address for this document'),
                 ),
                 if (_customShip) ...[
                   TextField(controller: _shipName, decoration: const InputDecoration(labelText: 'Ship to name')),
@@ -448,7 +479,7 @@ class _InvoiceFormScreenState extends State<InvoiceFormScreen> {
             FilledButton.icon(
               onPressed: _saving ? null : _save,
               icon: const Icon(Icons.save),
-              label: Text(_editing ? 'Update ${_type.label}' : 'Save ${_type.label}'),
+              label: Text(_editing ? 'Update ${_type.labelFor(_gst)}' : 'Save ${_type.labelFor(_gst)}'),
             ),
             const SizedBox(height: 40),
           ]),
@@ -544,20 +575,21 @@ class _InvoiceFormScreenState extends State<InvoiceFormScreen> {
             const SizedBox(width: 8),
             Expanded(flex: 2, child: rate),
             const SizedBox(width: 8),
-            Expanded(flex: 2, child: gst),
-            const SizedBox(width: 8),
-            Expanded(flex: 2, child: hsn),
+            if (_gst) ...[
+              Expanded(flex: 2, child: gst),
+              const SizedBox(width: 8),
+              Expanded(flex: 2, child: hsn),
+            ],
           ])
         else ...[
           Row(children: [Expanded(child: qty), const SizedBox(width: 8), Expanded(child: unit)]),
           const SizedBox(height: 10),
-          Row(children: [Expanded(child: rate), const SizedBox(width: 8), Expanded(child: gst)]),
-          const SizedBox(height: 10),
-          hsn,
+          Row(children: [Expanded(child: rate), if (_gst) ...[const SizedBox(width: 8), Expanded(child: gst)]]),
+          if (_gst) ...[const SizedBox(height: 10), hsn],
         ],
         const SizedBox(height: 8),
         Row(children: [
-          Text('Taxable ${money(calc.taxable)}  •  Tax ${money(calc.tax)}', style: TextStyle(color: Colors.grey.shade700, fontSize: 13)),
+          Text(_gst ? 'Taxable ${money(calc.taxable)}  •  Tax ${money(calc.tax)}' : '${qtyStr(l.qtyV)} × ${rateStr(l.rateV)}', style: TextStyle(color: Colors.grey.shade700, fontSize: 13)),
           const Spacer(),
           Text(rupee(calc.amount), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
         ]),
@@ -578,7 +610,8 @@ class _InvoiceFormScreenState extends State<InvoiceFormScreen> {
       title: 'Summary',
       child: Column(children: [
         row('Total quantity', qtyStr(c.totalQty)),
-        row('Taxable amount', rupee(c.taxable)),
+        row(_gst ? 'Taxable amount' : 'Sub total', rupee(c.taxable)),
+        if (_gst)
         for (final t in c.rows)
           if (_intra) ...[
             row('CGST @${pct(t.rate / 2)}', rupee(t.cgst)),

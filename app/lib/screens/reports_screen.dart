@@ -16,6 +16,8 @@ import '../widgets/common.dart';
 import '../widgets/company_selector.dart';
 import '../core/brand.dart';
 import '../widgets/top_actions.dart';
+import '../core/tax_mode.dart';
+import '../widgets/flow_widgets.dart';
 
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
@@ -25,6 +27,7 @@ class ReportsScreen extends StatefulWidget {
 
 class _ReportsScreenState extends State<ReportsScreen> {
   String _period = 'month';
+  bool? _flow = TaxMode.instance.gst; // null = both flows
   late String _from, _to;
   Map<String, dynamic>? _data;
   String? _error;
@@ -78,7 +81,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     });
     try {
       await Companies.instance.ensure();
-      final r = await Api.instance.get('/reports/sales', {'company': Companies.instance.selected, 'from': _from, 'to': _to});
+      final r = await Api.instance.get('/reports/sales', {'company': Companies.instance.selected, 'from': _from, 'to': _to, 'gst': flowParam(_flow)});
       if (mounted) setState(() => _data = Map<String, dynamic>.from(r));
     } catch (e) {
       if (mounted) setState(() => _error = '$e');
@@ -174,6 +177,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             CompanySelector(onChanged: _load),
             const SizedBox(height: 10),
+            FlowChips(value: _flow, onChanged: (v) {
+              setState(() => _flow = v);
+              _load();
+            }),
+            const SizedBox(height: 10),
             Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
               for (final p in const [('month', 'This month'), ('last', 'Last month'), ('fy', 'This FY'), ('lastfy', 'Last FY')])
                 ChoiceChip(label: Text(p.$2), selected: _period == p.$1, onSelected: (_) => _setPeriod(p.$1)),
@@ -218,12 +226,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
         children: [
           StatCard(label: 'Total sales', value: rupeeShort(t['total']), sub: '${t['count']} invoices', icon: Icons.receipt_long, color: Brand.navy),
           StatCard(label: 'Taxable value', value: rupeeShort(t['taxable']), icon: Icons.summarize_outlined, color: Brand.teal),
-          StatCard(label: 'Total GST', value: rupeeShort(t['tax']), sub: 'C ${rupeeShort(t['cgst'])} • S ${rupeeShort(t['sgst'])} • I ${rupeeShort(t['igst'])}', icon: Icons.percent, color: Brand.gold),
+          if (_flow != false) StatCard(label: 'Total GST', value: rupeeShort(t['tax']), sub: 'C ${rupeeShort(t['cgst'])} • S ${rupeeShort(t['sgst'])} • I ${rupeeShort(t['igst'])}', icon: Icons.percent, color: Brand.gold),
           StatCard(label: 'Pending', value: rupeeShort(t['balance']), sub: 'Received ${rupeeShort(t['received'])}', icon: Icons.account_balance_wallet, color: Colors.red),
         ],
       ),
       const SizedBox(height: 12),
       _profitCard(),
+      if (_flow == null && _data!['byFlow'] != null) _flowCard(),
+      if (_flow != false) ...[
       SectionCard(
         title: 'GST rate-wise summary (net of credit notes, for GSTR-1 / 3B)',
         child: SingleChildScrollView(
@@ -274,6 +284,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           ),
         ]),
       ),
+      ],
       SectionCard(
         title: 'Sales register',
         trailing: TextButton.icon(onPressed: _exportCsv, icon: const Icon(Icons.download), label: const Text('CSV')),
@@ -284,15 +295,15 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 child: DataTable(
                   headingRowHeight: 40,
                   showCheckboxColumn: false,
-                  columns: const [
+                  columns: [
                     DataColumn(label: Text('Date')),
                     DataColumn(label: Text('Inv No')),
                     DataColumn(label: Text('Customer')),
-                    DataColumn(label: Text('GSTIN')),
+                    if (_flow != false) DataColumn(label: Text('GSTIN')),
                     DataColumn(label: Text('Taxable'), numeric: true),
-                    DataColumn(label: Text('CGST'), numeric: true),
-                    DataColumn(label: Text('SGST'), numeric: true),
-                    DataColumn(label: Text('IGST'), numeric: true),
+                    if (_flow != false) DataColumn(label: Text('CGST'), numeric: true),
+                    if (_flow != false) DataColumn(label: Text('SGST'), numeric: true),
+                    if (_flow != false) DataColumn(label: Text('IGST'), numeric: true),
                     DataColumn(label: Text('Total'), numeric: true),
                     DataColumn(label: Text('Balance'), numeric: true),
                   ],
@@ -307,11 +318,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
                             constraints: const BoxConstraints(maxWidth: 220),
                             child: Text('${r['billTo']?['name'] ?? ''}', overflow: TextOverflow.ellipsis),
                           )),
-                          DataCell(Text('${r['billTo']?['gstin'] ?? ''}')),
+                          if (_flow != false) DataCell(Text('${r['billTo']?['gstin'] ?? ''}')),
                           DataCell(Text(money(r['taxableAmount']))),
-                          DataCell(Text(money(r['cgst']))),
-                          DataCell(Text(money(r['sgst']))),
-                          DataCell(Text(money(r['igst']))),
+                          if (_flow != false) DataCell(Text(money(r['cgst']))),
+                          if (_flow != false) DataCell(Text(money(r['sgst']))),
+                          if (_flow != false) DataCell(Text(money(r['igst']))),
                           DataCell(Text(money(r['total']), style: const TextStyle(fontWeight: FontWeight.w600))),
                           DataCell(Text(money(r['balance']), style: TextStyle(color: toD(r['balance']) > 0 ? Colors.red.shade700 : null))),
                         ],
@@ -333,6 +344,28 @@ class _ReportsScreenState extends State<ReportsScreen> {
         ),
       );
 
+  Widget _flowCard() {
+    final f = Map<String, dynamic>.from(_data!['byFlow']);
+    final g = Map<String, dynamic>.from(f['gst'] ?? {});
+    final n = Map<String, dynamic>.from(f['nongst'] ?? {});
+    Widget col(String title, Map t, Color color) => Expanded(
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(10)),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 6),
+              Text('${t['count'] ?? 0} bills • ${rupee(t['total'])}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+              Text('Pending ${rupee(t['balance'])}', style: TextStyle(color: Colors.grey.shade700, fontSize: 12)),
+            ]),
+          ),
+        );
+    return SectionCard(
+      title: 'With GST vs Without GST',
+      child: Row(children: [col('With GST', g, Brand.tealLight), const SizedBox(width: 10), col('Without GST', n, Brand.goldLight)]),
+    );
+  }
+
   Widget _profitCard() {
     final p = Map<String, dynamic>.from(_data!['profit'] ?? {});
     final profit = toD(p['profit']);
@@ -353,7 +386,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         const Divider(),
         row(profit >= 0 ? 'Profit' : 'Loss', rupee(profit.abs()), strong: true, color: profit >= 0 ? Colors.green.shade700 : Colors.red.shade700),
         const SizedBox(height: 4),
-        row('Net GST payable on sales', rupee(p['gstPayable'])),
+        if (_flow != false) row('Net GST payable on sales', rupee(p['gstPayable'])),
         Align(
           alignment: Alignment.centerLeft,
           child: Text('Purchase cost / input GST is not tracked, so this is sales minus expenses only.', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),

@@ -53,7 +53,7 @@ router.get('/:id', async (req, res) => {
 router.get('/:id/statement', async (req, res) => {
   const c = assertOwn(req, await Customer.findById(req.params.id).lean());
   const invoices = await Invoice.find({ customer: c._id })
-    .select('docType invoiceNo invoicePrefix invoiceDate dueDate total receivedAmount balance status company companySnapshot.name billTo.name payments')
+    .select('docType gst invoiceNo invoicePrefix invoiceDate dueDate total receivedAmount balance status company companySnapshot.name billTo.name payments')
     .sort({ invoiceDate: -1, invoiceNo: -1 })
     .lean();
   const live = invoices.filter((i) => i.status !== 'cancelled' && i.docType === 'invoice');
@@ -65,10 +65,10 @@ router.get('/:id/statement', async (req, res) => {
   if (c.openingBalance) entries.push({ date: '', type: 'Opening balance', ref: '', debit: c.openingBalance > 0 ? c.openingBalance : 0, credit: c.openingBalance < 0 ? -c.openingBalance : 0 });
   for (const i of live) {
     const no = `${i.invoicePrefix || ''}${i.invoiceNo}`;
-    entries.push({ date: i.invoiceDate, type: 'Invoice', ref: no, id: i._id, debit: i.total, credit: 0 });
+    entries.push({ date: i.invoiceDate, type: i.gst === false ? 'Bill (without GST)' : 'Tax invoice', ref: no, id: i._id, debit: i.total, credit: 0 });
     for (const p of i.payments || []) entries.push({ date: p.date, type: `Payment (${p.mode || ''})`, ref: no, id: i._id, debit: 0, credit: p.amount });
   }
-  for (const i of credits) entries.push({ date: i.invoiceDate, type: 'Credit note', ref: `${i.invoicePrefix || ''}${i.invoiceNo}`, id: i._id, debit: 0, credit: i.total });
+  for (const i of credits) entries.push({ date: i.invoiceDate, type: i.gst === false ? 'Sales return' : 'Credit note', ref: `${i.invoicePrefix || ''}${i.invoiceNo}`, id: i._id, debit: 0, credit: i.total });
   entries.sort((a, b) => (a.date || '').localeCompare(b.date || '') || b.debit - a.debit);
   let run = 0;
   for (const e of entries) {

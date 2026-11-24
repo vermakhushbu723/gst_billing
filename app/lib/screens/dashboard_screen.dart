@@ -10,6 +10,8 @@ import '../widgets/company_selector.dart';
 import '../widgets/payment_dialog.dart';
 import '../core/brand.dart';
 import '../widgets/top_actions.dart';
+import '../core/tax_mode.dart';
+import '../core/docs.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -24,14 +26,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
+    TaxMode.instance.addListener(_load);
     _load();
+  }
+
+  @override
+  void dispose() {
+    TaxMode.instance.removeListener(_load);
+    super.dispose();
   }
 
   Future<void> _load() async {
     setState(() => _error = null);
     try {
       await Companies.instance.ensure();
-      final r = await Api.instance.get('/reports/dashboard', {'company': Companies.instance.selected});
+      final r = await Api.instance.get('/reports/dashboard', {'company': Companies.instance.selected, 'gst': TaxMode.instance.param});
       if (mounted) setState(() => _data = Map<String, dynamic>.from(r));
     } catch (e) {
       if (mounted) setState(() => _error = '$e');
@@ -55,20 +64,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 4),
-            child: OutlinedButton.icon(
-              onPressed: () => context.go('/export'),
-              icon: const Icon(Icons.download_outlined, size: 18),
-              label: Text(MediaQuery.sizeOf(context).width < 600 ? 'Export' : 'Export / Download'),
-              style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
-            ),
-          ),IconButton(onPressed: _load, icon: const Icon(Icons.refresh), tooltip: 'Refresh'),
+            child: MediaQuery.sizeOf(context).width < 600
+                ? IconButton(tooltip: 'Export / Download', onPressed: () => context.go('/export'), icon: const Icon(Icons.download_outlined))
+                : OutlinedButton.icon(
+                    onPressed: () => context.go('/export'),
+                    icon: const Icon(Icons.download_outlined, size: 18),
+                    label: const Text('Export / Download'),
+                    style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
+                  ),
+          ),if (MediaQuery.sizeOf(context).width >= 600) IconButton(onPressed: _load, icon: const Icon(Icons.refresh), tooltip: 'Refresh'),
           ...topActions(),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _open('/invoices/new'),
+        onPressed: () => _open('/invoices/new?gst=${TaxMode.instance.gst ? 1 : 0}'),
         icon: const Icon(Icons.add),
-        label: const Text('New Invoice'),
+        label: Text('New ${DocType.invoice.labelFor(TaxMode.instance.gst)}'),
       ),
       body: _error != null && _data == null
           ? ErrorView(message: _error!, onRetry: _load)
@@ -89,7 +100,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       StatCard(label: "Today's Sales", value: rupeeShort(d['today']['total']), sub: '${d['today']['count']} invoices', icon: Icons.today, color: Brand.teal),
       StatCard(label: 'This Month', value: rupeeShort(d['month']['total']), sub: '${d['month']['count']} invoices', icon: Icons.calendar_month, color: Brand.navy),
       StatCard(label: 'Outstanding', value: rupeeShort(d['outstanding']), sub: 'to be received', icon: Icons.account_balance_wallet, color: Colors.red),
-      StatCard(label: 'GST This Month', value: rupeeShort(d['month']['tax']), sub: 'CGST + SGST + IGST', icon: Icons.percent, color: Brand.gold),
+      TaxMode.instance.gst
+          ? StatCard(label: 'GST This Month', value: rupeeShort(d['month']['tax']), sub: 'CGST + SGST + IGST', icon: Icons.percent, color: Brand.gold)
+          : StatCard(label: 'Bills (all time)', value: '${d['allTime']?['count'] ?? 0}', sub: 'without GST', icon: Icons.receipt_outlined, color: Brand.gold),
       StatCard(label: 'Received This Month', value: rupeeShort(d['receivedMonth']), sub: 'payments in', icon: Icons.south_west, color: Colors.green.shade700),
       StatCard(label: 'Expenses This Month', value: rupeeShort(d['monthExpense']), sub: 'kharcha', icon: Icons.north_east, color: Colors.deepOrange),
       StatCard(
@@ -121,9 +134,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
             const SizedBox(height: 16),
             Wrap(spacing: 10, runSpacing: 10, children: [
-              _quick(Icons.receipt_long, 'New Invoice', () => _open('/invoices/new')),
-              _quick(Icons.request_quote_outlined, 'Quotation', () => _open('/invoices/new?type=quotation')),
-              _quick(Icons.local_shipping_outlined, 'Delivery Challan', () => _open('/invoices/new?type=challan')),
+              _quick(Icons.receipt_long, 'New ${DocType.invoice.labelFor(TaxMode.instance.gst)}', () => _open('/invoices/new?gst=${TaxMode.instance.gst ? 1 : 0}')),
+              _quick(Icons.request_quote_outlined, DocType.quotation.labelFor(TaxMode.instance.gst), () => _open('/invoices/new?type=quotation&gst=${TaxMode.instance.gst ? 1 : 0}')),
+              _quick(Icons.local_shipping_outlined, 'Delivery Challan', () => _open('/invoices/new?type=challan&gst=${TaxMode.instance.gst ? 1 : 0}')),
               _quick(Icons.add_card, 'Receive Payment', () async {
                 if (await receivePayment(context)) _load();
               }),

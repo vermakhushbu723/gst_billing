@@ -199,6 +199,59 @@ try {
   assert.equal((await api('PUT', '/settings', { units: ['X'] })).status, 403);
   token = adminToken;
 
+  // ---- Without-GST flow ----
+  const nextGstBefore = (await api('GET', `/invoices/next-number?company=${om._id}`)).data.invoiceNo;
+  const nb = await api('GET', `/invoices/next-number?company=${om._id}&gst=0`);
+  assert.equal(nb.data.prefix, 'B-');
+  assert.equal(nb.data.invoiceNo, 1);
+  assert.equal(nb.data.gst, false);
+  const bill = await api('POST', '/invoices', { gst: false, company: om._id, customer: customer._id, invoiceDate: '2026-10-20', items: [{ name: 'Ice', qty: 100, rate: 3, gstRate: 18, hsn: '2201' }], receivedAmount: 100 });
+  assert.equal(bill.status, 201, JSON.stringify(bill.data));
+  assert.equal(bill.data.gst, false);
+  assert.equal(bill.data.invoicePrefix, 'B-');
+  assert.equal(bill.data.invoiceNo, 1);
+  assert.equal(bill.data.totalTax, 0);
+  assert.equal(bill.data.items[0].gstRate, 0, 'no GST on bills without GST');
+  assert.equal(bill.data.taxSummary.length, 0);
+  assert.equal(bill.data.total, 300);
+  assert.equal(bill.data.status, 'partial');
+  assert.equal((await api('GET', `/invoices/next-number?company=${om._id}`)).data.invoiceNo, nextGstBefore, 'GST series untouched');
+  assert.equal((await api('GET', `/invoices/next-number?company=${om._id}&gst=0`)).data.invoiceNo, 2);
+  const onlyNon = await api('GET', `/invoices?company=${om._id}&gst=nongst`);
+  assert.equal(onlyNon.data.total, 1);
+  assert.ok((await api('GET', `/invoices?company=${om._id}&gst=gst`)).data.items.every((i) => i.gst !== false));
+  const est = await api('POST', '/invoices', { gst: false, docType: 'quotation', company: om._id, customer: customer._id, invoiceDate: '2026-10-21', items: [{ name: 'Ice', qty: 10, rate: 3, gstRate: 5 }] });
+  assert.equal(est.data.invoicePrefix, 'EST-');
+  const estConv = await api('POST', `/invoices/${est.data._id}/convert`, { invoiceDate: '2026-10-22' });
+  assert.equal(estConv.data.gst, false);
+  assert.equal(estConv.data.invoicePrefix, 'B-');
+  assert.equal(estConv.data.invoiceNo, 2);
+  assert.equal(estConv.data.totalTax, 0);
+  const sr = await api('POST', '/invoices', { gst: false, docType: 'credit_note', company: om._id, customer: customer._id, invoiceDate: '2026-10-23', refInvoiceNo: 'B-1', items: [{ name: 'Ice', qty: 10, rate: 3, gstRate: 5 }] });
+  assert.equal(sr.data.invoicePrefix, 'SR-');
+  const nonRep = await api('GET', '/reports/sales?from=2026-10-01&to=2026-10-31&gst=nongst');
+  assert.equal(nonRep.data.totals.count, 2);
+  assert.equal(nonRep.data.totals.tax, 0);
+  assert.equal(nonRep.data.rateSummary.length, 0);
+  const allRep = await api('GET', '/reports/sales?from=2026-10-01&to=2026-10-31');
+  assert.equal(allRep.data.byFlow.nongst.count, 2);
+  assert.equal(allRep.data.byFlow.gst.count + allRep.data.byFlow.nongst.count, allRep.data.totals.count);
+  assert.equal((await api('GET', '/reports/dashboard?gst=nongst')).status, 200);
+  const nonExp = await api('GET', `/export/sales?company=${om._id}&gst=nongst`);
+  assert.equal(nonExp.data.title, 'Sales Summary Report (Without GST)');
+  assert.ok(nonExp.data.rows.every((r) => String(r[0]).startsWith('B-')));
+  assert.equal((await api('GET', `/export/gst?company=${om._id}&gst=nongst`)).data.rows.length >= 1, true, 'GST summary always uses GST invoices');
+  const stmt3 = await api('GET', `/customers/${customer._id}/statement`);
+  assert.ok(stmt3.data.ledger.some((e) => e.type === 'Bill (without GST)'));
+  // a company that is not GST registered can only make bills without GST
+  const c5 = companies[4];
+  await api('PUT', `/companies/${c5._id}`, { gstRegistered: false });
+  const c5cust = await api('POST', '/customers', { company: c5._id, name: 'Walk-in', stateCode: '27' });
+  const forced = await api('POST', '/invoices', { gst: true, company: c5._id, customer: c5cust.data._id, invoiceDate: '2026-10-25', items: [{ name: 'Ice', qty: 1, rate: 50, gstRate: 5 }] });
+  assert.equal(forced.data.gst, false);
+  assert.equal(forced.data.totalTax, 0);
+  assert.equal((await api('GET', `/invoices/next-number?company=${c5._id}&gst=1`)).data.gst, false);
+
   // ---- Export ----
   const exp = await api('GET', `/export/sales?company=${om._id}&from=2025-01-01&to=2026-12-31`);
   assert.equal(exp.status, 200, JSON.stringify(exp.data));

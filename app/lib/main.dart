@@ -30,11 +30,13 @@ import 'screens/settings_screen.dart';
 import 'screens/share_screen.dart';
 import 'screens/shell.dart';
 import 'screens/users_screen.dart';
+import 'core/tax_mode.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   usePathUrlStrategy();
   await AuthState.instance.init();
+  await TaxMode.instance.init();
   // Fresh company list, masters and notifications whenever the logged-in user changes.
   void onAuth() {
     Companies.instance.reset();
@@ -85,6 +87,7 @@ final _router = GoRouter(
                 customerId: s.uri.queryParameters['customer'],
                 copyFromId: s.uri.queryParameters['from'],
                 docType: DocType.of(s.uri.queryParameters['type']),
+                gst: s.uri.queryParameters['gst'] == null ? null : s.uri.queryParameters['gst'] != '0',
               ),
             ),
             GoRoute(

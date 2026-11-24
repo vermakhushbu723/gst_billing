@@ -5,14 +5,18 @@ import '../core/auth.dart';
 import '../core/brand.dart';
 import '../widgets/common.dart';
 import '../widgets/top_actions.dart';
+import '../core/tax_mode.dart';
 
 /// Phone menu for everything that does not fit in the bottom bar.
 class MoreScreen extends StatelessWidget {
   const MoreScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => ListenableBuilder(listenable: TaxMode.instance, builder: (context, _) => _build(context));
+
+  Widget _build(BuildContext context) {
     final user = AuthState.instance.user ?? {};
+    final gst = TaxMode.instance.gst;
     Widget tile(IconData icon, String title, String sub, String path) => ListTile(
           leading: Icon(icon, color: Brand.teal),
           title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
@@ -40,9 +44,9 @@ class MoreScreen extends StatelessWidget {
           ),
         ),
         group('SALES', [
-          tile(Icons.request_quote_outlined, 'Quotations', 'Estimates — convert to invoice in one tap', '/quotations'),
+          tile(Icons.request_quote_outlined, gst ? 'Quotations' : 'Estimates', 'Convert to ${gst ? 'invoice' : 'bill'} in one tap', '/quotations'),
           tile(Icons.local_shipping_outlined, 'Delivery Challans', 'Goods sent before billing', '/challans'),
-          tile(Icons.assignment_return_outlined, 'Credit Notes', 'Sales returns against invoices', '/credit-notes'),
+          tile(Icons.assignment_return_outlined, gst ? 'Credit Notes' : 'Sales Returns', 'Returns against ${gst ? 'invoices' : 'bills'}', '/credit-notes'),
         ]),
         group('MONEY', [
           tile(Icons.account_balance_wallet_outlined, 'Expenses', 'Kharcha with categories', '/expenses'),

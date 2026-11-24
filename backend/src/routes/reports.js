@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 import { Invoice } from '../models/Invoice.js';
 import { Expense } from '../models/Expense.js';
 import { round2 } from '../utils/gst.js';
-import { istToday } from '../utils/docs.js';
+import { gstFlag, gstMatch, istToday } from '../utils/docs.js';
 
 const router = Router();
 
@@ -11,12 +11,14 @@ function companyMatch(company) {
   return company && company !== 'all' && mongoose.isValidObjectId(company) ? { company: new mongoose.Types.ObjectId(String(company)) } : {};
 }
 
-function baseMatch(company, docType = 'invoice') {
-  return { status: { $ne: 'cancelled' }, docType, ...companyMatch(company) };
+// gst: true = only GST documents, false = only without-GST, null = both
+function baseMatch(company, docType = 'invoice', gst = null) {
+  return { status: { $ne: 'cancelled' }, docType, ...companyMatch(company), ...gstMatch(gst) };
 }
 
 router.get('/dashboard', async (req, res) => {
-  const match = baseMatch(req.query.company);
+  const g = gstFlag(req.query.gst);
+  const match = baseMatch(req.query.company, 'invoice', g);
   const today = istToday();
   const monthStart = `${today.slice(0, 7)}-01`;
   const d = new Date(`${monthStart}T00:00:00Z`);
@@ -50,8 +52,8 @@ router.get('/dashboard', async (req, res) => {
       { $match: { ...companyMatch(req.query.company), date: { $gte: sixMonthStart } } },
       { $group: { _id: { $substrBytes: ['$date', 0, 7] }, total: { $sum: '$amount' } } },
     ]),
-    Invoice.find({ ...companyMatch(req.query.company) })
-      .select('docType invoiceNo invoicePrefix invoiceDate total balance status billTo.name companySnapshot.name')
+    Invoice.find({ ...companyMatch(req.query.company), ...gstMatch(g) })
+      .select('docType gst invoiceNo invoicePrefix invoiceDate total balance status billTo.name companySnapshot.name')
       .sort({ createdAt: -1 })
       .limit(8)
       .lean(),
@@ -62,11 +64,11 @@ router.get('/dashboard', async (req, res) => {
       { $limit: 5 },
     ]),
     Invoice.aggregate([
-      { $match: baseMatch(req.query.company, 'credit_note') },
+      { $match: baseMatch(req.query.company, 'credit_note', g) },
       { $group: { _id: null, total: { $sum: '$total' } } },
     ]),
     sumExpenses(monthStart),
-    Invoice.countDocuments({ ...companyMatch(req.query.company), docType: 'quotation', status: 'open' }),
+    Invoice.countDocuments({ ...companyMatch(req.query.company), ...gstMatch(g), docType: 'quotation', status: 'open' }),
     Invoice.aggregate([
       { $match: match },
       { $unwind: '$payments' },
@@ -127,14 +129,16 @@ function totalsOf(rows) {
 
 // Sales register, GST summary, customer/item-wise sales, credit notes, expenses and profit.
 router.get('/sales', async (req, res) => {
-  const fields = 'docType invoiceNo invoicePrefix invoiceDate customer billTo.name billTo.gstin placeOfSupply refInvoiceNo taxableAmount cgst sgst igst totalTax total receivedAmount balance status companySnapshot.name taxSummary items';
+  const g = gstFlag(req.query.gst);
+  const fields = 'docType gst invoiceNo invoicePrefix invoiceDate customer billTo.name billTo.gstin placeOfSupply refInvoiceNo taxableAmount cgst sgst igst totalTax total receivedAmount balance status companySnapshot.name taxSummary items';
   const [rows, creditRows, expenses] = await Promise.all([
-    Invoice.find({ ...baseMatch(req.query.company), ...dateMatch(req.query, 'invoiceDate') }).select(fields).sort({ invoiceDate: 1, invoiceNo: 1 }).lean(),
-    Invoice.find({ ...baseMatch(req.query.company, 'credit_note'), ...dateMatch(req.query, 'invoiceDate') }).select(fields).sort({ invoiceDate: 1, invoiceNo: 1 }).lean(),
+    Invoice.find({ ...baseMatch(req.query.company, 'invoice', g), ...dateMatch(req.query, 'invoiceDate') }).select(fields).sort({ invoiceDate: 1, invoiceNo: 1 }).lean(),
+    Invoice.find({ ...baseMatch(req.query.company, 'credit_note', g), ...dateMatch(req.query, 'invoiceDate') }).select(fields).sort({ invoiceDate: 1, invoiceNo: 1 }).lean(),
     Expense.find({ ...companyMatch(req.query.company), ...dateMatch(req.query, 'date') }).lean(),
   ]);
 
   const totals = totalsOf(rows);
+  const byFlow = { gst: totalsOf(rows.filter((r) => r.gst !== false)), nongst: totalsOf(rows.filter((r) => r.gst === false)) };
   const creditTotals = totalsOf(creditRows);
 
   const rates = new Map();
@@ -197,6 +201,7 @@ router.get('/sales', async (req, res) => {
   res.json({
     rows: rows.map(strip),
     totals,
+    byFlow,
     rateSummary,
     b2b,
     b2c,

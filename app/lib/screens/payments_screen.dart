@@ -10,6 +10,7 @@ import '../widgets/company_selector.dart';
 import '../widgets/payment_dialog.dart';
 import '../widgets/period_filter.dart';
 import '../widgets/top_actions.dart';
+import '../core/tax_mode.dart';
 
 /// Payment-In: all money received from customers.
 class PaymentsScreen extends StatefulWidget {
@@ -26,14 +27,21 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
   @override
   void initState() {
     super.initState();
+    TaxMode.instance.addListener(_load);
     _load();
+  }
+
+  @override
+  void dispose() {
+    TaxMode.instance.removeListener(_load);
+    super.dispose();
   }
 
   Future<void> _load() async {
     setState(() => _error = null);
     try {
       await Companies.instance.ensure();
-      final r = await Api.instance.get('/payments', {'company': Companies.instance.selected, 'from': _period.from, 'to': _period.to});
+      final r = await Api.instance.get('/payments', {'company': Companies.instance.selected, 'from': _period.from, 'to': _period.to, 'gst': TaxMode.instance.param});
       if (mounted) setState(() => _data = Map<String, dynamic>.from(r));
     } catch (e) {
       if (mounted) setState(() => _error = '$e');
@@ -56,7 +64,7 @@ class _PaymentsScreenState extends State<PaymentsScreen> {
     final items = List<Map>.from(_data?['items'] ?? []);
     final byMode = Map<String, dynamic>.from(_data?['byMode'] ?? {});
     return Scaffold(
-      appBar: AppBar(title: const Text('Payments Received'), actions: topActions()),
+      appBar: AppBar(title: Text('Payments Received — ${TaxMode.instance.label}'), actions: topActions()),
       floatingActionButton: FloatingActionButton.extended(onPressed: _receive, icon: const Icon(Icons.add_card), label: const Text('Receive Payment')),
       body: RefreshIndicator(
         onRefresh: _load,

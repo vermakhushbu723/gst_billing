@@ -22,4 +22,5 @@ export async function notify({ key, type = 'info', severity = 'info', title, bod
 
 const LABEL = { invoice: 'Invoice', quotation: 'Quotation', credit_note: 'Credit note', challan: 'Delivery challan' };
 export const docLabel = (t) => LABEL[t] || 'Invoice';
+export { docLabelFor } from './docs.js';
 export const docNo = (inv) => `${inv.invoicePrefix || ''}${inv.invoiceNo}`;

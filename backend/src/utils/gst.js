@@ -8,11 +8,12 @@
 
 export const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 
-export function computeInvoice(rawItems, { intraState }) {
+// `gst: false` = bill without GST: every line is taxed at 0 and no tax summary.
+export function computeInvoice(rawItems, { intraState, gst = true }) {
   const items = (rawItems || []).map((it) => {
     const qty = Number(it.qty) || 0;
     const rate = Number(it.rate) || 0;
-    const gstRate = Number(it.gstRate) || 0;
+    const gstRate = gst ? Number(it.gstRate) || 0 : 0;
     const taxable = round2(qty * rate);
     const tax = round2((taxable * gstRate) / 100);
     return {

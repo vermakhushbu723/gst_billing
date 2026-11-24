@@ -5,7 +5,7 @@ import { Invoice } from '../models/Invoice.js';
 import { Customer } from '../models/Customer.js';
 import { HttpError, assertOwn } from '../middleware/auth.js';
 import { round2 } from '../utils/gst.js';
-import { istToday } from '../utils/docs.js';
+import { gstFlag, gstMatch, istToday } from '../utils/docs.js';
 import { settle } from './invoices.js';
 import { money, notify } from '../utils/notify.js';
 
@@ -16,7 +16,7 @@ const oid = (v) => new mongoose.Types.ObjectId(String(v));
 // Every payment received, across all invoices.
 router.get('/', async (req, res) => {
   const { company, customer, from, to, mode } = req.query;
-  const match = { docType: 'invoice', status: { $ne: 'cancelled' } };
+  const match = { docType: 'invoice', status: { $ne: 'cancelled' }, ...gstMatch(gstFlag(req.query.gst)) };
   if (company && company !== 'all' && mongoose.isValidObjectId(company)) match.company = oid(company);
   if (customer && mongoose.isValidObjectId(customer)) match.customer = oid(customer);
   const pmatch = {};
@@ -34,7 +34,7 @@ router.get('/', async (req, res) => {
     { $limit: 1000 },
     {
       $project: {
-        _id: '$payments._id', invoice: '$_id', invoiceNo: 1, invoicePrefix: 1, customer: 1, customerName: '$billTo.name',
+        _id: '$payments._id', invoice: '$_id', gst: 1, invoiceNo: 1, invoicePrefix: 1, customer: 1, customerName: '$billTo.name',
         companyName: '$companySnapshot.name', date: '$payments.date', amount: '$payments.amount', mode: '$payments.mode', note: '$payments.note',
       },
     },

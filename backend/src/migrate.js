@@ -9,6 +9,9 @@ export async function migrate() {
   // v1 had only invoices and a unique index on (company, invoiceNo).
   await Invoice.updateMany({ docType: { $exists: false } }, { $set: { docType: 'invoice' } });
   await Company.updateMany({ docPrefixes: { $exists: false } }, { $set: { docPrefixes: { quotation: 'QT-', credit_note: 'CN-', challan: 'DC-' } } });
+  // v4: GST / without-GST flows
+  await Invoice.updateMany({ gst: { $exists: false } }, { $set: { gst: true } });
+  await Company.updateMany({ gstRegistered: { $exists: false } }, { $set: { gstRegistered: true, nextBillNo: 1, nonGstPrefixes: { invoice: 'B-', quotation: 'EST-', credit_note: 'SR-', challan: 'NDC-' } } });
   await Invoice.syncIndexes();
 
   // v3: customers and products belong to a company (company logins see only their own).

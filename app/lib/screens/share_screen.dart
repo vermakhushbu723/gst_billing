@@ -58,7 +58,7 @@ class _ShareScreenState extends State<ShareScreen> {
           const SizedBox(width: 10),
           Flexible(
             child: Text(
-              inv == null ? 'Invoice' : '${type.label} #${invNo(inv)} — ${inv['companySnapshot']?['name'] ?? ''}',
+              inv == null ? 'Invoice' : '${type.labelFor(isGstDoc(inv))} #${invNo(inv)} — ${inv['companySnapshot']?['name'] ?? ''}',
               overflow: TextOverflow.ellipsis,
             ),
           ),

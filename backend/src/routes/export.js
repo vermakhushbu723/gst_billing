@@ -8,6 +8,7 @@ import { Expense } from '../models/Expense.js';
 import { HttpError } from '../middleware/auth.js';
 import { round2 } from '../utils/gst.js';
 import { config } from '../config.js';
+import { gstFlag, gstMatch } from '../utils/docs.js';
 
 // Data for "Export / Download" on the dashboard. Every report comes back as
 // { title, columns, rows, totalLabel, total }; the app turns it into Excel, CSV or PDF.
@@ -35,8 +36,8 @@ const text = (label) => ({ label, type: 'text' });
 const num = (label) => ({ label, type: 'number' });
 
 async function docs(match, q, docType) {
-  return Invoice.find({ ...match, docType, status: { $ne: 'cancelled' }, ...range(q, 'invoiceDate') })
-    .select('docType invoiceNo invoicePrefix invoiceDate dueDate total totalTax taxableAmount cgst sgst igst balance receivedAmount status customer billTo shareToken payments refInvoiceNo companySnapshot.name')
+  return Invoice.find({ ...match, ...gstMatch(gstFlag(q.gst)), docType, status: { $ne: 'cancelled' }, ...range(q, 'invoiceDate') })
+    .select('docType gst invoiceNo invoicePrefix invoiceDate dueDate total totalTax taxableAmount cgst sgst igst balance receivedAmount status customer billTo shareToken payments refInvoiceNo companySnapshot.name')
     .sort({ invoiceDate: 1, invoiceNo: 1 })
     .lean();
 }
@@ -82,7 +83,7 @@ async function build(type, match, q, base) {
     }
     case 'payments': {
       const items = await Invoice.aggregate([
-        { $match: { ...match, docType: 'invoice', status: { $ne: 'cancelled' } } },
+        { $match: { ...match, ...gstMatch(gstFlag(q.gst)), docType: 'invoice', status: { $ne: 'cancelled' } } },
         { $unwind: '$payments' },
         { $match: range(q, 'payments.date') },
         { $sort: { 'payments.date': 1 } },
@@ -157,7 +158,7 @@ async function build(type, match, q, base) {
       };
     }
     case 'item_sales': {
-      const rows = await Invoice.find({ ...match, docType: 'invoice', status: { $ne: 'cancelled' }, ...range(q, 'invoiceDate') }).select('items').lean();
+      const rows = await Invoice.find({ ...match, ...gstMatch(gstFlag(q.gst)), docType: 'invoice', status: { $ne: 'cancelled' }, ...range(q, 'invoiceDate') }).select('items').lean();
       const by = new Map();
       for (const r of rows) {
         for (const it of r.items || []) {
@@ -177,7 +178,8 @@ async function build(type, match, q, base) {
       };
     }
     case 'gst': {
-      const [sales, credits] = await Promise.all([docs(match, q, 'invoice'), docs(match, q, 'credit_note')]);
+      const gq = { ...q, gst: 'gst' };
+      const [sales, credits] = await Promise.all([docs(match, gq, 'invoice'), docs(match, gq, 'credit_note')]);
       const rates = new Map();
       const add = (list, sign) => {
         for (const r of list) {
@@ -215,6 +217,8 @@ router.get('/:type', async (req, res) => {
   const company = companyId ? await Company.findById(companyId).select('name mobile').lean() : null;
   const base = config.publicUrl || `${req.protocol}://${req.get('host')}`;
   const report = await build(type, match, req.query, base);
+  const flow = gstFlag(req.query.gst);
+  if (flow !== null && type !== 'gst' && !['customers', 'products', 'expenses'].includes(type)) report.title += flow ? ' (With GST)' : ' (Without GST)';
   res.json({
     type,
     companyName: company?.name || 'All Companies',

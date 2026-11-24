@@ -32,6 +32,8 @@ const taxRowSchema = new mongoose.Schema(
 const invoiceSchema = new mongoose.Schema(
   {
     docType: { type: String, enum: ['invoice', 'quotation', 'credit_note', 'challan'], default: 'invoice' },
+    // true = GST flow (tax invoice), false = without GST (plain bill, no tax)
+    gst: { type: Boolean, default: true },
     company: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', required: true },
     refInvoiceNo: { type: String, default: '' }, // credit note: against which invoice
     convertedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'Invoice' },
@@ -71,7 +73,7 @@ const invoiceSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
-invoiceSchema.index({ company: 1, docType: 1, invoiceNo: 1 }, { unique: true });
+invoiceSchema.index({ company: 1, docType: 1, gst: 1, invoiceNo: 1 }, { unique: true });
 invoiceSchema.index({ invoiceDate: -1 });
 invoiceSchema.index({ customer: 1 });
 

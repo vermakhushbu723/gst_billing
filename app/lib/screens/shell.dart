@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../core/auth.dart';
 import '../core/brand.dart';
+import '../core/tax_mode.dart';
 
 class _Dest {
   const _Dest(this.path, this.icon, this.label, {this.adminOnly = false});
@@ -58,7 +59,9 @@ class AppShell extends StatelessWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => ListenableBuilder(listenable: TaxMode.instance, builder: (context, _) => _build(context));
+
+  Widget _build(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
     if (width >= 900) {
       return Scaffold(
@@ -79,7 +82,7 @@ class AppShell extends StatelessWidget {
               selectedIndex: index,
               backgroundColor: Colors.white,
               height: 66,
-              destinations: [for (final d in _mobile) NavigationDestination(icon: Icon(d.icon), label: d.label)],
+              destinations: [for (final d in _mobile) NavigationDestination(icon: Icon(d.icon), label: _labelFor(d))],
               onDestinationSelected: (i) => context.go(_mobile[i].path),
             )
           : null,
@@ -109,6 +112,16 @@ class _Sidebar extends StatelessWidget {
             ),
           ),
         ),
+        if (!compact)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(22, 0, 22, 4),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(color: TaxMode.instance.gst ? Brand.tealLight : Brand.goldLight, borderRadius: BorderRadius.circular(8)),
+              child: Text(TaxMode.instance.gst ? 'Mode: With GST' : 'Mode: Without GST',
+                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Brand.navy)),
+            ),
+          ),
         Expanded(
           child: ListView(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), children: [
             for (final g in _groups) ...[
@@ -136,7 +149,7 @@ class _Sidebar extends StatelessWidget {
   Widget _item(BuildContext context, _Dest d) {
     final selected = _matches(location, d.path);
     final color = selected ? Brand.teal : Brand.slate;
-    final label = d.path == '/companies' && AuthState.instance.isCompanyLogin ? 'My Company' : d.path == '/users' ? 'Users & Logins' : d.label;
+    final label = _labelFor(d);
     final tile = Material(
       color: selected ? Brand.goldLight : Colors.transparent,
       borderRadius: BorderRadius.circular(10),
@@ -163,4 +176,17 @@ class _Sidebar extends StatelessWidget {
       child: compact ? Tooltip(message: label, child: tile) : tile,
     );
   }
+}
+
+/// Menu names follow the flow: Invoices → Bills, Quotations → Estimates, Credit Notes → Sales Returns.
+String _labelFor(_Dest d) {
+  final gst = TaxMode.instance.gst;
+  return switch (d.path) {
+    '/companies' when AuthState.instance.isCompanyLogin => 'My Company',
+    '/users' => 'Users & Logins',
+    '/invoices' => gst ? 'Invoices' : 'Bills',
+    '/quotations' => gst ? 'Quotations' : 'Estimates',
+    '/credit-notes' => gst ? 'Credit Notes' : 'Sales Returns',
+    _ => d.label,
+  };
 }

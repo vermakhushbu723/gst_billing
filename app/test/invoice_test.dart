@@ -129,6 +129,31 @@ void main() {
     expect(String.fromCharCodes(xlsx.sublist(0, 2)), 'PK');
   });
 
+  test('bill without GST: no tax in maths or PDF', () async {
+    final c = calcInvoice([(qty: 31377, rate: 2.95, gstRate: 0)], intraState: true);
+    expect(c.tax, 0);
+    expect(c.total, 92562.15);
+    final bill = {
+      ...referenceInvoice,
+      'gst': false,
+      'invoicePrefix': 'B-',
+      'invoiceNo': 1,
+      'items': [
+        {'name': 'ICE CUBES EDIBLE', 'unit': 'KGS', 'qty': 31377, 'rate': 2.95, 'gstRate': 0, 'taxable': 92562.15, 'tax': 0, 'amount': 92562.15},
+      ],
+      'taxSummary': [],
+      'totalTax': 0,
+      'cgst': 0,
+      'sgst': 0,
+      'total': 92562.15,
+      'balance': 92562.15,
+    };
+    expect(invoiceFileName(bill), 'GUJARAT_MILK_PRODUCTS_LIMITED_Bill_B-1.pdf');
+    final bytes = await InvoicePdf.build(bill, {});
+    File('build/test_bill.pdf').writeAsBytesSync(bytes);
+    expect(String.fromCharCodes(bytes.sublist(0, 4)), '%PDF');
+  });
+
   test('builds the invoice PDF', () async {
     // Logo/signature taken from the reference PDF when available (local check only).
     String img(String path) {

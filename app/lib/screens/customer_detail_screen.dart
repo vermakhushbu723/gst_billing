@@ -11,6 +11,8 @@ import '../core/format.dart';
 import '../widgets/common.dart';
 import '../widgets/payment_dialog.dart';
 import '../core/brand.dart';
+import '../core/tax_mode.dart';
+import '../core/docs.dart';
 
 class CustomerDetailScreen extends StatefulWidget {
   const CustomerDetailScreen({super.key, required this.id});
@@ -120,9 +122,9 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
       floatingActionButton: d == null
           ? null
           : FloatingActionButton.extended(
-              onPressed: () => _open('/invoices/new?customer=${widget.id}'),
+              onPressed: () => _open('/invoices/new?customer=${widget.id}&gst=${TaxMode.instance.gst ? 1 : 0}'),
               icon: const Icon(Icons.add),
-              label: const Text('New Invoice'),
+              label: Text('New ${DocType.invoice.labelFor(TaxMode.instance.gst)}'),
             ),
       body: _error != null && d == null
           ? ErrorView(message: _error!, onRetry: _load)
@@ -194,9 +196,9 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen> {
                 icon: const Icon(Icons.add_card),
                 label: const Text('Receive Payment'),
               ),
-            OutlinedButton.icon(onPressed: () => _open('/invoices/new?customer=${widget.id}&type=quotation'), icon: const Icon(Icons.request_quote_outlined), label: const Text('Quotation')),
-            OutlinedButton.icon(onPressed: () => _open('/invoices/new?customer=${widget.id}&type=challan'), icon: const Icon(Icons.local_shipping_outlined), label: const Text('Challan')),
-            OutlinedButton.icon(onPressed: () => _open('/invoices/new?customer=${widget.id}&type=credit_note'), icon: const Icon(Icons.assignment_return_outlined), label: const Text('Credit Note')),
+            OutlinedButton.icon(onPressed: () => _open('/invoices/new?customer=${widget.id}&type=quotation&gst=${TaxMode.instance.gst ? 1 : 0}'), icon: const Icon(Icons.request_quote_outlined), label: Text(DocType.quotation.labelFor(TaxMode.instance.gst))),
+            OutlinedButton.icon(onPressed: () => _open('/invoices/new?customer=${widget.id}&type=challan&gst=${TaxMode.instance.gst ? 1 : 0}'), icon: const Icon(Icons.local_shipping_outlined), label: const Text('Challan')),
+            OutlinedButton.icon(onPressed: () => _open('/invoices/new?customer=${widget.id}&type=credit_note&gst=${TaxMode.instance.gst ? 1 : 0}'), icon: const Icon(Icons.assignment_return_outlined), label: Text(DocType.creditNote.labelFor(TaxMode.instance.gst))),
           ]),
           const SizedBox(height: 12),
           SectionCard(

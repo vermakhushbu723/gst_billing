@@ -11,6 +11,8 @@ import '../widgets/common.dart';
 import '../widgets/company_selector.dart';
 import '../widgets/period_filter.dart';
 import '../widgets/top_actions.dart';
+import '../core/tax_mode.dart';
+import '../widgets/flow_widgets.dart';
 
 /// Download any data as Excel, CSV or PDF.
 class ExportScreen extends StatefulWidget {
@@ -24,6 +26,7 @@ class _ExportScreenState extends State<ExportScreen> {
   late String _type = widget.initialType ?? 'sales';
   Period _period = Period.preset('month');
   bool _allDates = false;
+  bool? _flow = TaxMode.instance.gst; // null = both flows
   bool _busy = false;
   ExportReport? _preview;
   String? _error;
@@ -59,7 +62,7 @@ class _ExportScreenState extends State<ExportScreen> {
     }
     setState(() => _error = null);
     try {
-      final r = await Exporter.fetch(_type, company: Companies.instance.selected, from: _from, to: _to);
+      final r = await Exporter.fetch(_type, company: Companies.instance.selected, from: _from, to: _to, gst: flowParam(_flow));
       if (mounted) setState(() => _preview = r);
     } catch (e) {
       if (mounted) setState(() => _error = '$e');
@@ -80,7 +83,7 @@ class _ExportScreenState extends State<ExportScreen> {
       final types = _type == 'all' ? [for (final t in exportTypes) t.$1] : [_type];
       final reports = <ExportReport>[];
       for (final t in types) {
-        reports.add(await Exporter.fetch(t, company: company, from: _from, to: _to));
+        reports.add(await Exporter.fetch(t, company: company, from: _from, to: _to, gst: flowParam(_flow)));
       }
       late Uint8List bytes;
       late String mime, ext;
@@ -150,9 +153,16 @@ class _ExportScreenState extends State<ExportScreen> {
     );
 
     final filters = SectionCard(
-      title: '2. Company & dates',
+      title: '2. Company, bill type & dates',
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         CompanySelector(onChanged: _loadPreview),
+        const SizedBox(height: 12),
+        const Text('Bill type', style: TextStyle(fontWeight: FontWeight.w600)),
+        const SizedBox(height: 6),
+        FlowChips(value: _flow, onChanged: (v) {
+          setState(() => _flow = v);
+          _loadPreview();
+        }),
         const SizedBox(height: 12),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,

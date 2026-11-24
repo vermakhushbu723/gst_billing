@@ -25,12 +25,13 @@ class _CompanyFormScreenState extends State<CompanyFormScreen> {
   final _c = {
     for (final k in [
       'name', 'tagline', 'address', 'city', 'pincode', 'mobile', 'email', 'gstin', 'pan',
-      'accountName', 'ifsc', 'accountNo', 'bankName', 'branch', 'upiId', 'terms', 'invoicePrefix', 'nextInvoiceNo', 'dueDays', 'qtPrefix', 'dcPrefix', 'cnPrefix',
+      'accountName', 'ifsc', 'accountNo', 'bankName', 'branch', 'upiId', 'terms', 'invoicePrefix', 'nextInvoiceNo', 'dueDays', 'qtPrefix', 'dcPrefix', 'cnPrefix', 'billPrefix', 'estPrefix', 'srPrefix', 'ndcPrefix', 'nextBillNo',
     ])
       k: TextEditingController(),
   };
   String _stateCode = '27';
   String _color = '#000000';
+  bool _gstRegistered = true;
   String _logo = '', _signature = '';
   bool _loading = false, _saving = false;
   String? _error;
@@ -45,6 +46,11 @@ class _CompanyFormScreenState extends State<CompanyFormScreen> {
       _c['qtPrefix']!.text = 'QT-';
       _c['dcPrefix']!.text = 'DC-';
       _c['cnPrefix']!.text = 'CN-';
+      _c['billPrefix']!.text = 'B-';
+      _c['estPrefix']!.text = 'EST-';
+      _c['srPrefix']!.text = 'SR-';
+      _c['ndcPrefix']!.text = 'NDC-';
+      _c['nextBillNo']!.text = '1';
       _c['dueDays']!.text = '15';
       _c['terms']!.text = 'Goods once sold will not be taken back or exchanged\nAll disputes are subject to Mumbai jurisdiction only';
     }
@@ -76,6 +82,13 @@ class _CompanyFormScreenState extends State<CompanyFormScreen> {
       _c['qtPrefix']!.text = '${dp['quotation'] ?? 'QT-'}';
       _c['dcPrefix']!.text = '${dp['challan'] ?? 'DC-'}';
       _c['cnPrefix']!.text = '${dp['credit_note'] ?? 'CN-'}';
+      final np = Map<String, dynamic>.from(c['nonGstPrefixes'] ?? {});
+      _c['billPrefix']!.text = '${np['invoice'] ?? 'B-'}';
+      _c['estPrefix']!.text = '${np['quotation'] ?? 'EST-'}';
+      _c['srPrefix']!.text = '${np['credit_note'] ?? 'SR-'}';
+      _c['ndcPrefix']!.text = '${np['challan'] ?? 'NDC-'}';
+      _c['nextBillNo']!.text = '${c['nextBillNo'] ?? 1}';
+      _gstRegistered = c['gstRegistered'] != false;
       _c['terms']!.text = List<String>.from((c['terms'] ?? []).map((e) => '$e')).join('\n');
       _stateCode = '${c['stateCode'] ?? '27'}';
       _color = '${c['color'] ?? '#000000'}';
@@ -131,6 +144,9 @@ class _CompanyFormScreenState extends State<CompanyFormScreen> {
       'terms': t('terms').split('\n').map((e) => e.trim()).where((e) => e.isNotEmpty).toList(),
       'invoicePrefix': t('invoicePrefix'),
       'docPrefixes': {'quotation': t('qtPrefix'), 'challan': t('dcPrefix'), 'credit_note': t('cnPrefix')},
+      'gstRegistered': _gstRegistered,
+      'nonGstPrefixes': {'invoice': t('billPrefix'), 'quotation': t('estPrefix'), 'credit_note': t('srPrefix'), 'challan': t('ndcPrefix')},
+      'nextBillNo': int.tryParse(t('nextBillNo')) ?? 1,
       'nextInvoiceNo': int.tryParse(t('nextInvoiceNo')) ?? 1,
       'dueDays': int.tryParse(t('dueDays')) ?? 0,
       'color': _color,
@@ -183,6 +199,15 @@ class _CompanyFormScreenState extends State<CompanyFormScreen> {
                         SectionCard(
                           title: 'Business',
                           child: Column(children: [
+                            SwitchListTile(
+                              contentPadding: EdgeInsets.zero,
+                              value: _gstRegistered,
+                              onChanged: (v) => setState(() => _gstRegistered = v),
+                              title: const Text('GST registered'),
+                              subtitle: Text(_gstRegistered
+                                  ? 'Can make bills with GST and without GST'
+                                  : 'Only bills without GST (no tax, no GSTIN on the bill)'),
+                            ),
                             f('name', 'Company name *', validator: (v) => (v ?? '').trim().isEmpty ? 'Name is required' : null),
                             gap,
                             f('tagline', 'Tagline (top right of invoice)', helper: 'e.g. PURE RO TREATED ICE CUBES'),
@@ -266,6 +291,22 @@ class _CompanyFormScreenState extends State<CompanyFormScreen> {
                               Expanded(child: f('dcPrefix', 'Challan prefix')),
                               const SizedBox(width: 12),
                               Expanded(child: f('cnPrefix', 'Credit note prefix')),
+                            ]),
+                            gap,
+                            const Align(alignment: Alignment.centerLeft, child: Text('Without GST series', style: TextStyle(fontWeight: FontWeight.w700))),
+                            gap,
+                            Row(children: [
+                              Expanded(child: f('billPrefix', 'Bill prefix')),
+                              const SizedBox(width: 12),
+                              Expanded(child: f('nextBillNo', 'Next bill number', kb: TextInputType.number, fmt: [FilteringTextInputFormatter.digitsOnly])),
+                            ]),
+                            gap,
+                            Row(children: [
+                              Expanded(child: f('estPrefix', 'Estimate prefix')),
+                              const SizedBox(width: 12),
+                              Expanded(child: f('ndcPrefix', 'Challan prefix')),
+                              const SizedBox(width: 12),
+                              Expanded(child: f('srPrefix', 'Sales return prefix')),
                             ]),
                             gap,
                             f('dueDays', 'Payment due in (days)', kb: TextInputType.number, fmt: [FilteringTextInputFormatter.digitsOnly]),

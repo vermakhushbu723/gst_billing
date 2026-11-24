@@ -29,6 +29,10 @@ const companySchema = new mongoose.Schema(
     terms: { type: [String], default: [] },
     invoicePrefix: { type: String, default: '' },
     docPrefixes: { type: Object, default: () => ({ quotation: 'QT-', credit_note: 'CN-', challan: 'DC-' }) },
+    // Not GST registered → only bills without GST can be made.
+    gstRegistered: { type: Boolean, default: true },
+    nonGstPrefixes: { type: Object, default: () => ({ invoice: 'B-', quotation: 'EST-', credit_note: 'SR-', challan: 'NDC-' }) },
+    nextBillNo: { type: Number, default: 1 }, // next number of the without-GST bill series
     nextInvoiceNo: { type: Number, default: 1 },
     dueDays: { type: Number, default: 15 },
     color: { type: String, default: '#000000' },

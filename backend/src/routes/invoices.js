@@ -10,9 +10,9 @@ import { Customer } from '../models/Customer.js';
 import { HttpError, assertOwn, requireAdmin } from '../middleware/auth.js';
 import { computeInvoice, paymentStatus, round2 } from '../utils/gst.js';
 import { stateName } from '../utils/states.js';
-import { addDays, docTypeOf, istToday, prefixFor } from '../utils/docs.js';
+import { addDays, docLabelFor, docTypeOf, gstFlag, gstMatch, istToday, prefixFor } from '../utils/docs.js';
 import { config } from '../config.js';
-import { docLabel, docNo, money, notify } from '../utils/notify.js';
+import { docNo, money, notify } from '../utils/notify.js';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -43,11 +43,17 @@ export function settle(inv) {
   if (inv.status !== 'cancelled') inv.status = paymentStatus(inv.total, received);
 }
 
-async function nextNumber(companyId, docType) {
+async function nextNumber(companyId, docType, gst = true) {
   const company = await Company.findById(companyId);
-  const last = await Invoice.findOne({ company: companyId, docType }).sort({ invoiceNo: -1 }).select('invoiceNo').lean();
-  const base = docType === 'invoice' ? company?.nextInvoiceNo || 1 : 1;
+  const last = await Invoice.findOne({ company: companyId, docType, ...gstMatch(gst) }).sort({ invoiceNo: -1 }).select('invoiceNo').lean();
+  const base = docType === 'invoice' ? (gst ? company?.nextInvoiceNo : company?.nextBillNo) || 1 : 1;
   return Math.max(base, (last?.invoiceNo || 0) + 1);
+}
+
+/** Flow of a new document: without GST when asked, or when the company is not GST registered. */
+function gstFor(company, requested) {
+  if (company?.gstRegistered === false) return false;
+  return gstFlag(requested) !== false;
 }
 
 // Builds every derived field of a document from the request body.
@@ -70,13 +76,14 @@ async function fillInvoice(inv, body) {
 
   const posCode = body.placeOfSupplyCode || customer.stateCode || company.stateCode;
   const intraState = posCode === company.stateCode;
-  const calc = computeInvoice(body.items, { intraState });
+  const gst = inv.gst !== false;
+  const calc = computeInvoice(body.items, { intraState, gst });
 
   inv.company = company._id;
   inv.customer = customer._id;
   inv.invoiceDate = invoiceDate;
   inv.dueDate = dueDate || '';
-  inv.invoicePrefix = prefixFor(company, inv.docType || 'invoice');
+  inv.invoicePrefix = prefixFor(company, inv.docType || 'invoice', gst);
   inv.companySnapshot = companySnapshot(company);
   inv.billTo = {
     name: customer.name, address: customer.billingAddress, gstin: customer.gstin, pan: customer.pan,
@@ -101,7 +108,8 @@ async function fillInvoice(inv, body) {
 
 async function bumpCounter(inv) {
   if (inv.docType !== 'invoice') return;
-  await Company.updateOne({ _id: inv.company, nextInvoiceNo: { $lte: inv.invoiceNo } }, { $set: { nextInvoiceNo: inv.invoiceNo + 1 } });
+  const field = inv.gst === false ? 'nextBillNo' : 'nextInvoiceNo';
+  await Company.updateOne({ _id: inv.company, [field]: { $lte: inv.invoiceNo } }, { $set: { [field]: inv.invoiceNo + 1 } });
 }
 
 router.get('/', async (req, res) => {
@@ -109,7 +117,7 @@ router.get('/', async (req, res) => {
   const q = String(req.query.q || '').trim();
   const page = Math.max(1, Number(req.query.page) || 1);
   const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 30));
-  const filter = { docType: req.query.type === 'all' ? { $exists: true } : docTypeOf(req.query.type) };
+  const filter = { docType: req.query.type === 'all' ? { $exists: true } : docTypeOf(req.query.type), ...gstMatch(gstFlag(req.query.gst)) };
   if (company && company !== 'all') filter.company = company;
   if (customer) filter.customer = customer;
   if (status && status !== 'all') filter.status = status === 'due' ? { $in: ['unpaid', 'partial'] } : status;
@@ -125,7 +133,7 @@ router.get('/', async (req, res) => {
   }
   const [items, total, sum] = await Promise.all([
     Invoice.find(filter)
-      .select('docType invoiceNo invoicePrefix invoiceDate dueDate total receivedAmount balance status company customer billTo.name billTo.phone companySnapshot.name')
+      .select('docType gst invoiceNo invoicePrefix invoiceDate dueDate total receivedAmount balance status company customer billTo.name billTo.phone companySnapshot.name')
       .sort({ invoiceDate: -1, invoiceNo: -1 })
       .skip((page - 1) * limit)
       .limit(limit)
@@ -144,7 +152,8 @@ router.get('/next-number', async (req, res) => {
   const company = await Company.findById(req.query.company).lean();
   if (!company) throw new HttpError(404, 'Company not found');
   const docType = docTypeOf(req.query.type);
-  res.json({ invoiceNo: await nextNumber(req.query.company, docType), prefix: prefixFor(company, docType), dueDays: company.dueDays ?? 15 });
+  const gst = gstFor(company, req.query.gst);
+  res.json({ invoiceNo: await nextNumber(req.query.company, docType, gst), prefix: prefixFor(company, docType, gst), dueDays: company.dueDays ?? 15, gst, gstRegistered: company.gstRegistered !== false });
 });
 
 router.get('/:id', async (req, res) => {
@@ -155,14 +164,15 @@ router.get('/:id', async (req, res) => {
 router.post('/', async (req, res) => {
   const body = req.body || {};
   const docType = docTypeOf(body.docType);
-  const inv = new Invoice({ docType, createdBy: req.user._id, shareToken: crypto.randomBytes(18).toString('hex') });
+  const companyForGst = await Company.findById(body.company).select('gstRegistered').lean();
+  const inv = new Invoice({ docType, gst: gstFor(companyForGst, body.gst), createdBy: req.user._id, shareToken: crypto.randomBytes(18).toString('hex') });
   const company = await fillInvoice(inv, body);
 
   if (body.invoiceNo) {
     inv.invoiceNo = Number(body.invoiceNo);
     if (!(inv.invoiceNo > 0)) throw new HttpError(400, 'Number is invalid');
   } else {
-    inv.invoiceNo = await nextNumber(company._id, docType);
+    inv.invoiceNo = await nextNumber(company._id, docType, inv.gst);
   }
   const received = docType === 'invoice' ? round2(Number(body.receivedAmount) || 0) : 0;
   inv.payments = received > 0
@@ -173,12 +183,12 @@ router.post('/', async (req, res) => {
   await bumpCounter(inv);
   await notify({
     type: inv.docType, severity: 'info', actor: req.user._id, company: inv.company, link: `/invoices/${inv._id}`,
-    title: `${docLabel(inv.docType)} #${docNo(inv)} created`,
+    title: `${docLabelFor(inv.docType, inv.gst)} #${docNo(inv)} created`,
     body: `${inv.billTo?.name || ''} • ${money(inv.total)} • by ${req.user.name}`,
   });
   if (inv.docType === 'invoice' && inv.receivedAmount > 0) {
     await notify({ type: 'payment', severity: 'success', actor: req.user._id, company: inv.company, link: `/invoices/${inv._id}`,
-      title: `Payment received ${money(inv.receivedAmount)}`, body: `${inv.billTo?.name || ''} • Invoice #${docNo(inv)}` });
+      title: `Payment received ${money(inv.receivedAmount)}`, body: `${inv.billTo?.name || ''} • ${docLabelFor('invoice', inv.gst)} #${docNo(inv)}` });
   }
   res.status(201).json(inv);
 });
@@ -212,7 +222,7 @@ router.post('/:id/cancel', async (req, res) => {
   inv.status = 'cancelled';
   await inv.save();
   await notify({ type: 'cancelled', severity: 'warning', actor: req.user._id, company: inv.company, link: `/invoices/${inv._id}`,
-    title: `${docLabel(inv.docType)} #${docNo(inv)} cancelled`, body: `${inv.billTo?.name || ''} • ${money(inv.total)} • by ${req.user.name}` });
+    title: `${docLabelFor(inv.docType, inv.gst)} #${docNo(inv)} cancelled`, body: `${inv.billTo?.name || ''} • ${money(inv.total)} • by ${req.user.name}` });
   res.json(inv);
 });
 
@@ -233,7 +243,7 @@ router.post('/:id/convert', async (req, res) => {
   if (src.status !== 'open') throw new HttpError(400, src.status === 'converted' ? 'Already converted to invoice' : 'Document is cancelled');
   const company = await Company.findById(src.company);
   const date = DATE_RE.test(req.body?.invoiceDate || '') ? req.body.invoiceDate : istToday();
-  const inv = new Invoice({ docType: 'invoice', createdBy: req.user._id, shareToken: crypto.randomBytes(18).toString('hex'), convertedFrom: src._id });
+  const inv = new Invoice({ docType: 'invoice', gst: src.gst !== false, createdBy: req.user._id, shareToken: crypto.randomBytes(18).toString('hex'), convertedFrom: src._id });
   await fillInvoice(inv, {
     company: src.company,
     customer: src.customer,
@@ -246,7 +256,7 @@ router.post('/:id/convert', async (req, res) => {
     vehicleNo: src.vehicleNo,
     poNumber: src.poNumber,
   });
-  inv.invoiceNo = await nextNumber(src.company, 'invoice');
+  inv.invoiceNo = await nextNumber(src.company, 'invoice', inv.gst);
   inv.payments = [];
   settle(inv);
   await inv.save();
@@ -255,7 +265,7 @@ router.post('/:id/convert', async (req, res) => {
   src.convertedTo = inv._id;
   await src.save();
   await notify({ type: 'converted', severity: 'success', actor: req.user._id, company: inv.company, link: `/invoices/${inv._id}`,
-    title: `${docLabel(src.docType)} #${docNo(src)} converted to Invoice #${docNo(inv)}`, body: `${inv.billTo?.name || ''} • ${money(inv.total)}` });
+    title: `${docLabelFor(src.docType, src.gst)} #${docNo(src)} converted to ${docLabelFor('invoice', inv.gst)} #${docNo(inv)}`, body: `${inv.billTo?.name || ''} • ${money(inv.total)}` });
   res.status(201).json(inv);
 });
 
@@ -271,7 +281,7 @@ router.post('/:id/payments', async (req, res) => {
   settle(inv);
   await inv.save();
   await notify({ type: 'payment', severity: 'success', actor: req.user._id, company: inv.company, link: `/invoices/${inv._id}`,
-    title: `Payment received ${money(amount)}`, body: `${inv.billTo?.name || ''} • Invoice #${docNo(inv)} • ${req.body?.mode || 'Cash'}` });
+    title: `Payment received ${money(amount)}`, body: `${inv.billTo?.name || ''} • ${docLabelFor('invoice', inv.gst)} #${docNo(inv)} • ${req.body?.mode || 'Cash'}` });
   res.json(inv);
 });
 

@@ -24,7 +24,7 @@ class InvoiceActions {
     final b = StringBuffer()
       ..writeln('Dear ${inv['billTo']?['name'] ?? 'Customer'},')
       ..writeln()
-      ..writeln('Please find the ${DocType.of(inv['docType']).label} No. ${invNo(inv)} dated ${dmy(inv['invoiceDate'])} '
+      ..writeln('Please find the ${DocType.of(inv['docType']).labelFor(isGstDoc(inv))} No. ${invNo(inv)} dated ${dmy(inv['invoiceDate'])} '
           'from ${inv['companySnapshot']?['name'] ?? ''}.')
       ..writeln('Amount: ${rupee(inv['total'])}');
     if (toD(inv['balance']) > 0 && toD(inv['balance']) != toD(inv['total'])) {
@@ -55,7 +55,7 @@ class InvoiceActions {
       files: [XFile.fromData(bytes, mimeType: 'application/pdf', name: name)],
       fileNameOverrides: [name],
       text: message(inv),
-      subject: '${DocType.of(inv['docType']).label} ${invNo(inv)}',
+      subject: '${DocType.of(inv['docType']).labelFor(isGstDoc(inv))} ${invNo(inv)}',
     ));
   }
 

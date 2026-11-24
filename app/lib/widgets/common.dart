@@ -201,14 +201,15 @@ class InvoiceTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final cancelled = inv['status'] == 'cancelled';
     final type = DocType.of(inv['docType']);
-    final no = type.isInvoice ? '#${invNo(inv)}' : '${type.label} #${invNo(inv)}';
+    final g = isGstDoc(inv);
+    final no = type.isInvoice ? '#${invNo(inv)}${g ? '' : ' (no GST)'}' : '${type.labelFor(g)} #${invNo(inv)}';
     return ListTile(
       onTap: onTap,
       leading: CircleAvatar(
         backgroundColor: Theme.of(context).colorScheme.primaryContainer,
         child: Icon(type.icon, size: 20),
       ),
-      title: Text(byInvoiceNo ? '${type.label} #${invNo(inv)}' : '${inv['billTo']?['name'] ?? ''}', maxLines: 1, overflow: TextOverflow.ellipsis,
+      title: Text(byInvoiceNo ? '${type.labelFor(g)} #${invNo(inv)}' : '${inv['billTo']?['name'] ?? ''}', maxLines: 1, overflow: TextOverflow.ellipsis,
           style: TextStyle(fontWeight: FontWeight.w600, decoration: cancelled ? TextDecoration.lineThrough : null)),
       subtitle: Text(
         '${byInvoiceNo ? '' : '$no • '}${dmy(inv['invoiceDate'])}${showCompany ? ' • ${inv['companySnapshot']?['name'] ?? ''}' : ''}',

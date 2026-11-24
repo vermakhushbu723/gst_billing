@@ -16,10 +16,12 @@ router.get('/pdf/:file', async (req, res) => {
   if (!/^[a-f0-9]{36}$/.test(token)) return res.status(404).json({ message: 'Not found' });
   const file = path.resolve(config.uploadDir, 'pdf', `${token}.pdf`);
   if (!fs.existsSync(file)) return res.status(404).json({ message: 'Invoice PDF not found' });
-  const inv = await Invoice.findOne({ shareToken: token }).select('docType invoiceNo invoicePrefix billTo.name').lean();
+  const inv = await Invoice.findOne({ shareToken: token }).select('docType gst invoiceNo invoicePrefix billTo.name').lean();
   if (!inv) return res.status(404).json({ message: 'Not found' });
   const party = String(inv.billTo?.name || 'Invoice').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '');
-  const word = { quotation: 'Quotation', credit_note: 'Credit_Note', challan: 'Delivery_Challan' }[inv.docType] || 'Sales_Invoice';
+  const word = inv.gst === false
+    ? { quotation: 'Estimate', credit_note: 'Sales_Return', challan: 'Delivery_Challan' }[inv.docType] || 'Bill'
+    : { quotation: 'Quotation', credit_note: 'Credit_Note', challan: 'Delivery_Challan' }[inv.docType] || 'Sales_Invoice';
   const no = `${inv.invoicePrefix || ''}${inv.invoiceNo}`.replace(/[^A-Za-z0-9-]+/g, '_');
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `inline; filename="${party}_${word}_${no}.pdf"`);

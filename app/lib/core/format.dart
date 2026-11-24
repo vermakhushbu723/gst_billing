@@ -53,11 +53,12 @@ String invoiceFileName(Map inv) {
   final party = '${inv['billTo']?['name'] ?? 'Invoice'}'
       .replaceAll(RegExp(r'[^A-Za-z0-9]+'), '_')
       .replaceAll(RegExp(r'^_|_$'), '');
+  final plain = inv['gst'] == false;
   final word = switch ('${inv['docType'] ?? 'invoice'}') {
-    'quotation' => 'Quotation',
-    'credit_note' => 'Credit_Note',
+    'quotation' => plain ? 'Estimate' : 'Quotation',
+    'credit_note' => plain ? 'Sales_Return' : 'Credit_Note',
     'challan' => 'Delivery_Challan',
-    _ => 'Sales_Invoice',
+    _ => plain ? 'Bill' : 'Sales_Invoice',
   };
   return '${party}_${word}_${invNo(inv)}.pdf';
 }

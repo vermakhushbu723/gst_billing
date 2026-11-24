@@ -5,9 +5,10 @@ import '../core/auth.dart';
 import '../core/brand.dart';
 import '../core/notifications.dart';
 import 'common.dart';
+import 'flow_widgets.dart';
 
 /// Right side of every top bar: notification bell + profile menu.
-List<Widget> topActions() => const [NotificationBell(), SizedBox(width: 4), ProfileMenu(), SizedBox(width: 12)];
+List<Widget> topActions() => const [ModeSwitch(), SizedBox(width: 6), NotificationBell(), SizedBox(width: 4), ProfileMenu(), SizedBox(width: 12)];
 
 String timeAgo(dynamic iso) {
   final d = DateTime.tryParse('${iso ?? ''}')?.toLocal();

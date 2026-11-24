@@ -27,6 +27,7 @@ class _InvoiceViewScreenState extends State<InvoiceViewScreen> {
   String _copy = 'ORIGINAL';
   int _pdfVersion = 0;
   DocType get _type => DocType.of(_inv?['docType']);
+  bool get _gstDoc => isGstDoc(_inv);
 
   @override
   void initState() {
@@ -186,7 +187,7 @@ class _InvoiceViewScreenState extends State<InvoiceViewScreen> {
   }
 
   Future<void> _convert() async {
-    if (!await confirm(context, 'Convert to invoice?', "A new tax invoice will be created with these items and today's date.", ok: 'Convert')) return;
+    if (!await confirm(context, 'Convert to invoice?', "A new ${_gstDoc ? 'tax invoice' : 'bill (without GST)'} will be created with these items and today's date.", ok: 'Convert')) return;
     if (!mounted) return;
     final r = await runBusy(context, () => Api.instance.post('/invoices/${widget.id}/convert'), success: 'Invoice created');
     if (r != null && mounted) context.pushReplacement('/invoices/${r['_id']}');
@@ -201,14 +202,14 @@ class _InvoiceViewScreenState extends State<InvoiceViewScreen> {
       case 'duplicate':
         await context.push('/invoices/new?from=${widget.id}');
       case 'cancel':
-        if (await confirm(context, 'Cancel ${_type.label}?', '${_type.label} ${invNo(inv)} will be marked CANCELLED and left out of reports.', ok: 'Cancel ${_type.label}', danger: true) &&
+        if (await confirm(context, 'Cancel ${_type.labelFor(_gstDoc)}?', '${_type.labelFor(_gstDoc)} ${invNo(inv)} will be marked CANCELLED and left out of reports.', ok: 'Cancel ${_type.labelFor(_gstDoc)}', danger: true) &&
             mounted) {
           _apply(await runBusy(context, () => Api.instance.post('/invoices/${widget.id}/cancel'), success: 'Invoice cancelled'));
         }
       case 'restore':
         _apply(await runBusy(context, () => Api.instance.post('/invoices/${widget.id}/restore'), success: 'Invoice restored'));
       case 'delete':
-        if (await confirm(context, 'Delete ${_type.label}?', '${_type.label} ${invNo(inv)} will be deleted permanently.', ok: 'Delete', danger: true) && mounted) {
+        if (await confirm(context, 'Delete ${_type.labelFor(_gstDoc)}?', '${_type.labelFor(_gstDoc)} ${invNo(inv)} will be deleted permanently.', ok: 'Delete', danger: true) && mounted) {
           final r = await runBusy(context, () => Api.instance.delete('/invoices/${widget.id}'), success: 'Invoice deleted');
           if (r != null && mounted) context.pop(true);
         }
@@ -223,7 +224,7 @@ class _InvoiceViewScreenState extends State<InvoiceViewScreen> {
     final inv = _inv;
     return Scaffold(
       appBar: AppBar(
-        title: Text(inv == null ? 'Document' : '${_type.label} #${invNo(inv)}'),
+        title: Text(inv == null ? 'Document' : '${_type.labelFor(_gstDoc)} #${invNo(inv)}'),
         actions: [
           if (inv != null)
             PopupMenuButton<String>(
@@ -303,8 +304,8 @@ class _InvoiceViewScreenState extends State<InvoiceViewScreen> {
         btn(Icons.chat, 'WhatsApp', _whatsapp, color: const Color(0xFF25D366)),
         btn(kIsWeb ? Icons.download : Icons.share, kIsWeb ? 'Download' : 'Share PDF', () => InvoiceActions.download(_inv!, _pdf!)),
         if (_type.isInvoice && _inv!['status'] != 'cancelled' && toD(_inv!['balance']) > 0) btn(Icons.payments_outlined, 'Payment', _addPayment),
-        if (_type.canConvert && _inv!['status'] == 'open') btn(Icons.transform, 'Convert to Invoice', _convert, color: Brand.gold),
-        if (_inv!['convertedTo'] != null) btn(Icons.receipt_long, 'Open Invoice', () => context.push('/invoices/${_inv!['convertedTo']}')),
+        if (_type.canConvert && _inv!['status'] == 'open') btn(Icons.transform, 'Convert to ${DocType.invoice.labelFor(_gstDoc)}', _convert, color: Brand.gold),
+        if (_inv!['convertedTo'] != null) btn(Icons.receipt_long, 'Open ${DocType.invoice.labelFor(_gstDoc)}', () => context.push('/invoices/${_inv!['convertedTo']}')),
         DropdownButton<String>(
           value: _copy,
           underline: const SizedBox(),
@@ -341,12 +342,15 @@ class _InvoiceViewScreenState extends State<InvoiceViewScreen> {
           row('Date', dmy(inv['invoiceDate'])),
           if (_type.secondDateLabel != null && '${inv['dueDate'] ?? ''}'.isNotEmpty) row(_type.secondDateLabel!.replaceAll(':', ''), dmy(inv['dueDate'])),
           if ('${inv['refInvoiceNo'] ?? ''}'.isNotEmpty) row('Against invoice', '${inv['refInvoiceNo']}'),
-          row('Place of supply', '${inv['placeOfSupply'] ?? ''}'),
+          if (_gstDoc) row('Place of supply', '${inv['placeOfSupply'] ?? ''}'),
           const Divider(),
-          row('Taxable amount', rupee(inv['taxableAmount'])),
-          if (toD(inv['igst']) > 0) row('IGST', rupee(inv['igst'])) else ...[
-            row('CGST', rupee(inv['cgst'])),
-            row('SGST', rupee(inv['sgst'])),
+          row('Bill type', _gstDoc ? 'With GST' : 'Without GST'),
+          row(_gstDoc ? 'Taxable amount' : 'Sub total', rupee(inv['taxableAmount'])),
+          if (_gstDoc) ...[
+            if (toD(inv['igst']) > 0) row('IGST', rupee(inv['igst'])) else ...[
+              row('CGST', rupee(inv['cgst'])),
+              row('SGST', rupee(inv['sgst'])),
+            ],
           ],
           row('Total', rupee(inv['total']), strong: true),
           if (_type.isInvoice) ...[

@@ -51,6 +51,8 @@ class InvoicePdf {
     final accent = PdfColor.fromHex(_hex(c['color'] ?? company['color']));
     final cancelled = inv['status'] == 'cancelled';
     final type = DocType.of(inv['docType']);
+    // Without GST: no GSTIN, no tax column, no CGST/SGST rows, no place of supply.
+    final gst = isGstDoc(inv);
 
     // fontNormal must be set too, otherwise copyWith(font:) is ignored by the pdf package.
     pw.TextStyle st(pw.Font? f, {double size = 9.5, PdfColor color = PdfColors.black}) =>
@@ -77,7 +79,7 @@ class InvoicePdf {
       mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
       children: [
         pw.Row(children: [
-          pw.Text(type.pdfTitle, style: medium.copyWith(fontSize: 10)),
+          pw.Text(type.pdfTitleFor(gst), style: medium.copyWith(fontSize: 10)),
           pw.SizedBox(width: 8),
           pw.Container(
             padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 1),
@@ -107,7 +109,7 @@ class InvoicePdf {
             if (companyAddress.isNotEmpty) pw.Text(companyAddress, style: base),
             pw.Row(children: [
               if ('${c['mobile'] ?? ''}'.isNotEmpty) ...[rich('Mobile:', '${c['mobile']}'), pw.SizedBox(width: 18)],
-              if ('${c['gstin'] ?? ''}'.isNotEmpty) rich('GSTIN:', '${c['gstin']}'),
+              if (gst && '${c['gstin'] ?? ''}'.isNotEmpty) rich('GSTIN:', '${c['gstin']}'),
             ]),
             if ('${c['email'] ?? ''}'.isNotEmpty) rich('Email:', '${c['email']}'),
           ]),
@@ -120,12 +122,12 @@ class InvoicePdf {
       padding: const pw.EdgeInsets.symmetric(horizontal: 13, vertical: 9),
       child: pw.Column(children: [
         pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
-          rich(type.noLabel, invNo(inv), style: base.copyWith(fontSize: 10)),
-          rich(type.dateLabel, dmy(inv['invoiceDate']), style: base.copyWith(fontSize: 10)),
+          rich(type.noLabelFor(gst), invNo(inv), style: base.copyWith(fontSize: 10)),
+          rich(type.dateLabelFor(gst), dmy(inv['invoiceDate']), style: base.copyWith(fontSize: 10)),
           type.secondDateLabel != null && '${inv['dueDate'] ?? ''}'.isNotEmpty
               ? rich(type.secondDateLabel!, dmy(inv['dueDate']), style: base.copyWith(fontSize: 10))
               : type == DocType.creditNote && '${inv['refInvoiceNo'] ?? ''}'.isNotEmpty
-                  ? rich('Against Invoice:', '${inv['refInvoiceNo']}', style: base.copyWith(fontSize: 10))
+                  ? rich(gst ? 'Against Invoice:' : 'Against Bill:', '${inv['refInvoiceNo']}', style: base.copyWith(fontSize: 10))
                   : pw.SizedBox(),
         ]),
         if ('${inv['vehicleNo'] ?? ''}'.isNotEmpty || '${inv['poNumber'] ?? ''}'.isNotEmpty) ...[
@@ -155,10 +157,12 @@ class InvoicePdf {
             pw.Text('${billTo['name'] ?? ''}', style: bold.copyWith(fontSize: 10)),
             pw.SizedBox(height: 2),
             if ('${billTo['address'] ?? ''}'.isNotEmpty) pw.Text('${billTo['address']}', style: base),
-            labelLine('GSTIN:', '${billTo['gstin'] ?? ''}'),
-            labelLine('PAN Number:', '${billTo['pan'] ?? ''}'),
-            if ('${billTo['gstin'] ?? ''}'.isEmpty) labelLine('Mobile:', '${billTo['phone'] ?? ''}'),
-            labelLine('Place of Supply:', '${inv['placeOfSupply'] ?? ''}'),
+            if (gst) ...[
+              labelLine('GSTIN:', '${billTo['gstin'] ?? ''}'),
+              labelLine('PAN Number:', '${billTo['pan'] ?? ''}'),
+            ],
+            if (!gst || '${billTo['gstin'] ?? ''}'.isEmpty) labelLine('Mobile:', '${billTo['phone'] ?? ''}'),
+            if (gst) labelLine('Place of Supply:', '${inv['placeOfSupply'] ?? ''}'),
           ]),
         ),
         pw.SizedBox(width: 24),
@@ -175,13 +179,20 @@ class InvoicePdf {
     );
 
     // ---------- Items ----------
-    const widths = {
-      0: pw.FlexColumnWidth(4.3),
-      1: pw.FlexColumnWidth(1.7),
-      2: pw.FlexColumnWidth(1.3),
-      3: pw.FlexColumnWidth(1.7),
-      4: pw.FlexColumnWidth(1.8),
-    };
+    final widths = gst
+        ? const {
+            0: pw.FlexColumnWidth(4.3),
+            1: pw.FlexColumnWidth(1.7),
+            2: pw.FlexColumnWidth(1.3),
+            3: pw.FlexColumnWidth(1.7),
+            4: pw.FlexColumnWidth(1.8),
+          }
+        : const {
+            0: pw.FlexColumnWidth(5.0),
+            1: pw.FlexColumnWidth(1.8),
+            2: pw.FlexColumnWidth(1.5),
+            3: pw.FlexColumnWidth(2.0),
+          };
     pw.Widget cell(pw.Widget child, {bool right = false}) => pw.Container(
           padding: const pw.EdgeInsets.fromLTRB(9, 8, 9, 8),
           alignment: right ? pw.Alignment.topRight : pw.Alignment.topLeft,
@@ -203,7 +214,7 @@ class InvoicePdf {
             cell(pw.Text('ITEMS', style: headStyle)),
             cell(pw.Text('QTY.', style: headStyle), right: true),
             cell(pw.Text('RATE', style: headStyle), right: true),
-            cell(pw.Text('TAX', style: headStyle), right: true),
+            if (gst) cell(pw.Text('TAX', style: headStyle), right: true),
             cell(pw.Text('AMOUNT', style: headStyle), right: true),
           ],
         ),
@@ -214,17 +225,18 @@ class InvoicePdf {
               cell(pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
                 pw.Text('${it['name'] ?? ''}', style: base),
                 if ('${it['description'] ?? ''}'.isNotEmpty) pw.Text('${it['description']}', style: st(_regular, size: 7.5, color: _grey)),
-                if ('${it['hsn'] ?? ''}'.isNotEmpty) pw.Text('HSN: ${it['hsn']}', style: small),
+                if (gst && '${it['hsn'] ?? ''}'.isNotEmpty) pw.Text('HSN: ${it['hsn']}', style: small),
               ])),
               cell(pw.Text('${qtyStr(it['qty'])} ${it['unit'] ?? ''}'.trim(), style: base), right: true),
               cell(pw.Text(rateStr(it['rate']), style: base), right: true),
-              cell(
-                pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.center, children: [
-                  pw.Text(money(it['tax']), style: base),
-                  pw.Text('(${pct(it['gstRate'])})', style: small),
-                ]),
-                right: true,
-              ),
+              if (gst)
+                cell(
+                  pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.center, children: [
+                    pw.Text(money(it['tax']), style: base),
+                    pw.Text('(${pct(it['gstRate'])})', style: small),
+                  ]),
+                  right: true,
+                ),
               cell(pw.Text(money(it['amount']), style: base), right: true),
             ],
           ),
@@ -245,7 +257,7 @@ class InvoicePdf {
             cell(pw.Text('SUBTOTAL', style: bold)),
             cell(pw.Text(qtyStr(inv['totalQty']), style: bold), right: true),
             cell(pw.SizedBox()),
-            cell(pw.Text(rupee(inv['totalTax']), style: bold), right: true),
+            if (gst) cell(pw.Text(rupee(inv['totalTax']), style: bold), right: true),
             cell(pw.Text(rupee(inv['total']), style: bold), right: true),
           ],
         ),
@@ -299,7 +311,8 @@ class InvoicePdf {
       pw.Container(
         width: 190,
         child: pw.Column(children: [
-          totalRow('Taxable Amount', rupee(inv['taxableAmount'])),
+          totalRow(gst ? 'Taxable Amount' : 'Sub Total', rupee(inv['taxableAmount'])),
+          if (gst)
           for (final t in taxRows)
             if (inv['intraState'] != false) ...[
               totalRow('CGST @${pct(toD(t['rate']) / 2)}', rupee(t['cgst'])),
@@ -344,7 +357,7 @@ class InvoicePdf {
     ]);
 
     final doc = pw.Document(
-      title: '${type.label} ${invNo(inv)}',
+      title: '${type.labelFor(gst)} ${invNo(inv)}',
       author: '${c['name'] ?? ''}',
       creator: 'mybillwill',
       theme: pw.ThemeData.withFont(base: _regular, bold: _bold),
